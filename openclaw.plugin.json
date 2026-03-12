@@ -1,0 +1,32 @@
+{
+  "id": "plc-control",
+  "name": "PLC Control",
+  "description": "PLC智能管控系统 - 监控、告警、AI诊断",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "backendUrl": {
+        "type": "string",
+        "default": "http://localhost:8080",
+        "description": "Python后端服务地址"
+      },
+      "refreshInterval": {
+        "type": "number",
+        "default": 1000,
+        "description": "数据刷新间隔(ms)"
+      },
+      "enableAI": {
+        "type": "boolean",
+        "default": true,
+        "description": "启用AI诊断功能"
+      },
+      "ollamaModel": {
+        "type": "string",
+        "default": "qwen2:7b",
+        "description": "Ollama模型名称"
+      }
+    }
+  }
+}
