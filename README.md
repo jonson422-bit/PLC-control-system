@@ -1,78 +1,134 @@
 # PLC 智能管控系统
 
-基于 OpenClaw 平台的 PLC 智能管控系统，支持 S7-200 SMART PLC 的监控、告警和 AI 故障诊断。
+基于 FastAPI 的 S7-200 SMART PLC 智能管控系统，支持实时监控、告警管理、AI故障诊断和知识库管理。
 
 ## 功能特性
 
-- ✅ **实时监控**: 读取数字量 I/O 和模拟量 I/O
-- ✅ **输出控制**: 远程控制 Q 输出点和模拟量输出
-- ✅ **告警管理**: 创建告警规则，查看活动告警
-- ✅ **AI 诊断**: 基于 Ollama 的故障智能诊断
-- ✅ **Web Dashboard**: 现代化的监控界面
-- ✅ **自然语言交互**: 通过 OpenClaw Skill 进行对话式操作
+### 核心功能
+- **实时监控**: 读取数字量 I/O 和模拟量 I/O（只读模式，保护设备安全）
+- **告警管理**: 创建告警规则，支持多种操作符（>, <, >=, <=, ==, !=）
+- **AI 诊断**: 基于 Ollama 的故障智能诊断
+- **知识库**: 设备知识管理，支持分类、搜索
+- **程序管理**: STL 程序上传、解析和变量提取
+- **历史数据**: 数据记录、图表展示和统计分析
+
+### 安全特性
+- 只读模式保护设备安全（写入功能已移除）
+- 敏感信息通过环境变量管理
+- 完善的异常处理和日志记录
 
 ## 系统架构
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  OpenClaw       │     │  FastAPI 后端   │     │  S7-200 SMART   │
-│  Extension      │────▶│  Python 服务    │────▶│  PLC            │
-│  + Skill        │     │  (端口 8080)    │     │  (192.168.2.1)  │
+│  Web Dashboard  │     │  FastAPI 后端   │     │  S7-200 SMART   │
+│  (Vue.js)       │────▶│  Python 服务    │────▶│  PLC            │
+│  端口 8088      │     │  端口 8088      │     │  192.168.2.1    │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                │
                                ▼
                         ┌─────────────────┐
                         │  Ollama AI      │
-                        │  (端口 11434)   │
+                        │  端口 11434     │
                         └─────────────────┘
 ```
 
 ## 快速启动
 
-### 1. 启动后端服务
+### 1. 环境准备
 
 ```bash
-cd /home/pi/OpenClaw_AI/extensions/plc-control
-./start.sh
+# 激活虚拟环境
+source /home/pi/envs/plc_env/bin/activate
+
+# 安装依赖
+pip install fastapi uvicorn httpx python-snap7 python-dotenv
 ```
 
-或手动启动：
+### 2. 配置环境变量
 
 ```bash
-source /home/pi/envs/plc_env/bin/activate
-cd /home/pi/OpenClaw_AI/extensions/plc-control/backend/plc_service
+# 复制配置模板
+cp backend/plc_service/.env.example backend/plc_service/.env
+
+# 编辑配置文件
+nano backend/plc_service/.env
+```
+
+配置示例：
+```
+# 飞书应用配置
+FEISHU_APP_ID=your_app_id
+FEISHU_APP_SECRET=your_app_secret
+FEISHU_RECEIVE_ID=your_receive_id
+
+# 后台任务间隔配置（秒）
+CONNECTION_MONITOR_INTERVAL=3
+DATA_PUSH_INTERVAL=1
+ALARM_MONITOR_INTERVAL=2
+```
+
+### 3. 启动服务
+
+```bash
+cd /home/pi/plc-control-system/backend/plc_service
 python main.py
 ```
 
-### 2. 访问 Dashboard
+### 4. 访问系统
 
-打开浏览器访问: http://192.168.1.16:8080
-
-### 3. 在 OpenClaw 中使用 Skill
-
-启动 OpenClaw 后，可以使用自然语言与 PLC 交互：
-
-- "读取所有 PLC 输入点状态"
-- "AIW16 的温度是多少"
-- "打开 Q0.0"
-- "设置告警：温度超过80度时提醒"
-- "电机转速异常，帮我分析原因"
+- **Dashboard**: http://192.168.1.16:8088
+- **API文档**: http://192.168.1.16:8088/docs
 
 ## API 端点
 
+### PLC 操作
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/api/plc/read` | GET | 读取所有点位 |
 | `/api/plc/read/{point}` | GET | 读取单个点位 |
-| `/api/plc/write` | POST | 写入点位 |
-| `/api/plc/cpu` | POST | CPU 控制 (start/stop) |
+| `/api/plc/status` | GET | 获取连接状态 |
+| `/api/plc/cpu` | GET | 获取CPU状态 |
+
+### 告警管理
+| 端点 | 方法 | 说明 |
+|------|------|------|
 | `/api/alarms` | GET | 获取告警列表 |
+| `/api/alarms/rules` | GET | 获取告警规则 |
 | `/api/alarms/rules` | POST | 创建告警规则 |
-| `/api/ai/diagnose` | POST | AI 故障诊断 |
+
+### 点位管理
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/points` | GET | 获取点位列表 |
+| `/api/points/{id}` | GET | 获取点位详情 |
+| `/api/points/monitor/list` | GET | 获取监控点位 |
+
+### 历史数据
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/data/point/{point}` | GET | 获取点位历史数据 |
+| `/api/data/batch` | GET | 批量获取历史数据 |
+| `/api/data/statistics/{point}` | GET | 获取统计信息 |
+
+### AI 诊断
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/ai/diagnose` | POST | AI故障诊断 |
 | `/api/ai/analyze` | GET | 数据分析 |
 | `/api/ai/recommend` | POST | 优化建议 |
 
-完整 API 文档: http://192.168.1.16:8080/docs
+### 知识库
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/knowledge/list` | GET | 获取知识列表 |
+| `/api/knowledge/categories` | GET | 获取分类列表 |
+
+### 程序管理
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/programs` | GET | 获取程序列表 |
+| `/api/programs/upload` | POST | 上传程序文件 |
 
 ## 支持的点位
 
@@ -80,66 +136,75 @@ python main.py
 PLC 输入状态监控
 
 ### 数字量输出 (Q0.0 - Q0.7)
-可远程控制的输出点
+输出状态监控（只读）
 
 ### 模拟量输入 (AIW16-22)
-EM AT04 模块，4 路热电偶温度传感器
+EM AT04 模块，4路热电偶温度传感器
 
 ### 模拟量输出 (AQW32-34)
-EM AQ02 模块，2 路模拟量输出
+EM AQ02 模块，2路模拟量输出（只读）
 
 ## 目录结构
 
 ```
-extensions/plc-control/
-├── index.ts                    # OpenClaw 扩展入口
-├── openclaw.plugin.json        # 扩展配置
-├── package.json
-├── src/
-│   └── tools/
-│       ├── plc-read.ts         # PLC 读取工具
-│       ├── plc-write.ts        # PLC 写入工具
-│       ├── alarm-manage.ts     # 告警管理工具
-│       └── ai-diagnose.ts      # AI 诊断工具
-├── skills/
-│   └── plc-expert/
-│       └── SKILL.md            # 自然语言 Skill
-├── backend/
-│   └── plc_service/
-│       ├── main.py             # FastAPI 主程序
-│       ├── database.py         # SQLite 数据库
-│       ├── plc_client.py       # PLC 通信客户端
-│       ├── routes/             # API 路由
-│       └── static/
-│           └── dashboard.html  # Web Dashboard
-└── start.sh                    # 启动脚本
+plc-control-system/
+├── README.md                   # 项目说明
+├── WORK_LOG.md                 # 工作日志
+├── .gitignore                  # Git忽略配置
+└── backend/
+    └── plc_service/
+        ├── main.py             # FastAPI 主程序
+        ├── database.py         # 数据库操作
+        ├── plc_client.py       # PLC 通信客户端
+        ├── stl_parser.py       # STL 解析器
+        ├── migrate_db.py       # 数据库迁移
+        ├── .env.example        # 环境变量模板
+        ├── routes/             # API 路由
+        │   ├── plc.py          # PLC 操作
+        │   ├── alarms.py       # 告警管理
+        │   ├── points.py       # 点位管理
+        │   ├── history.py      # 历史数据
+        │   ├── knowledge.py    # 知识库
+        │   ├── program_routes.py # 程序管理
+        │   └── ai.py           # AI 诊断
+        ├── uploads/            # 上传文件目录
+        │   ├── programs/       # 程序文件
+        │   └── knowledge/      # 知识库文件
+        └── static/
+            └── dashboard.html  # Web Dashboard
 ```
 
-## 配置
+## 配置说明
 
-### 修改 PLC IP 地址
+### 后台任务间隔
 
-编辑 `backend/plc_service/plc_client.py`:
+可通过环境变量调整后台任务运行间隔：
 
-```python
-def __init__(self, ip: str = '192.168.2.1', ...):
-```
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `CONNECTION_MONITOR_INTERVAL` | 3秒 | 连接状态检查间隔 |
+| `DATA_PUSH_INTERVAL` | 1秒 | 数据推送间隔 |
+| `ALARM_MONITOR_INTERVAL` | 2秒 | 告警检查间隔 |
+| `ERROR_RETRY_INTERVAL` | 5秒 | 错误重试间隔 |
 
-### 修改 AI 模型
+### 告警操作符
 
-编辑 `openclaw.plugin.json`:
-
-```json
-{
-  "ollamaModel": "qwen2:7b"  // 或 deepseek-r1:7b, llama3:8b
-}
-```
+支持以下比较操作符：
+- `>` 大于
+- `<` 小于
+- `>=` 大于等于
+- `<=` 小于等于
+- `==` 等于
+- `!=` 不等于
 
 ## 依赖
 
 - Python 3.11+
-- FastAPI, uvicorn, httpx
-- python-snap7 (已安装在 plc_env 虚拟环境)
+- FastAPI
+- uvicorn
+- httpx
+- python-snap7
+- python-dotenv
 - Ollama (本地运行)
 
 ## 故障排除
@@ -153,6 +218,23 @@ def __init__(self, ip: str = '192.168.2.1', ...):
 1. 确认 Ollama 服务运行: `systemctl status ollama`
 2. 检查模型是否已下载: `ollama list`
 
-### 扩展未加载
-1. 在 OpenClaw 项目根目录运行: `pnpm build`
-2. 重启 OpenClaw 服务
+### 数据库问题
+```bash
+# 检查数据库文件
+ls -la backend/plc_service/plc_control.db
+
+# 运行迁移脚本
+python backend/plc_service/migrate_db.py
+```
+
+## 版本历史
+
+### v1.1.0 (2026-03-19)
+- 安全加固：移除所有写入功能，改为只读模式
+- 代码质量优化：修复22个问题
+- 新增功能：历史数据图表、知识库、程序管理
+- 性能优化：添加配置常量、类型注解
+
+## License
+
+MIT License
