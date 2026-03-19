@@ -10,6 +10,14 @@ from contextlib import contextmanager
 
 DB_PATH = Path(__file__).parent / "plc_control.db"
 
+# 默认监控点位列表（统一管理）
+DEFAULT_POINTS = [
+    'I0.0', 'I0.1', 'I0.2', 'I0.3', 'I0.4', 'I0.5', 'I0.6', 'I0.7',
+    'Q0.0', 'Q0.1', 'Q0.2', 'Q0.3', 'Q0.4', 'Q0.5', 'Q0.6', 'Q0.7',
+    'AIW16', 'AIW18', 'AIW20', 'AIW22',
+    'AQW32', 'AQW34'
+]
+
 def init_db():
     """初始化数据库表"""
     conn = sqlite3.connect(DB_PATH)
@@ -73,12 +81,40 @@ def init_db():
             threshold REAL NOT NULL,
             severity TEXT DEFAULT 'warning',
             message TEXT,
-            enabled INTEGER DEFAULT 1,
             cooldown_seconds INTEGER DEFAULT 60,
+            enabled INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
+    # 告警日志表
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS alarm_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_id INTEGER,
+            point TEXT NOT NULL,
+            value REAL,
+            message TEXT,
+            severity TEXT DEFAULT 'warning',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (rule_id) REFERENCES alarm_rules(id)
+        )
+    """)
+    
+    # 知识库表
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS knowledge_base (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL DEFAULT 'general',
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            keywords TEXT,
+            related_points TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # 告警事件表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS alarm_events (
@@ -96,16 +132,15 @@ def init_db():
         )
     """)
     
-    # 知识库表
+    # 监控变量配置表
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS knowledge_base (
+        CREATE TABLE IF NOT EXISTS monitor_config (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            keywords TEXT,
-            related_points TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            point_id INTEGER NOT NULL,
+            display_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (point_id) REFERENCES points(id),
+            UNIQUE(point_id)
         )
     """)
     
@@ -144,7 +179,7 @@ def init_db():
         ]
         for point in default_points:
             cursor.execute("""
-                INSERT INTO points (name, address, data_type, description, unit, category)
+                INSERT OR IGNORE INTO points (name, address, data_type, description, unit, category)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, point)
     
@@ -155,7 +190,7 @@ def init_db():
 @contextmanager
 def get_db():
     """获取数据库连接"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -194,6 +229,33 @@ def create_alarm_rule(rule: Dict) -> int:
               rule.get('message'), rule.get('cooldown_seconds', 60)))
         db.commit()
         return cursor.lastrowid
+
+
+def get_alarm_rule_by_id(rule_id: int) -> Optional[Dict]:
+    with get_db() as db:
+        cursor = db.execute("SELECT * FROM alarm_rules WHERE id = ?", (rule_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_alarm_rule(rule_id: int, rule: Dict) -> bool:
+    with get_db() as db:
+        db.execute("""
+            UPDATE alarm_rules 
+            SET name = ?, point = ?, operator = ?, threshold = ?, severity = ?, message = ?, cooldown_seconds = ?
+            WHERE id = ?
+        """, (rule['name'], rule['point'], rule['condition']['operator'],
+              rule['condition']['value'], rule.get('severity', 'warning'),
+              rule.get('message'), rule.get('cooldown_seconds', 60), rule_id))
+        db.commit()
+        return True
+
+
+def delete_alarm_rule(rule_id: int) -> bool:
+    with get_db() as db:
+        db.execute("UPDATE alarm_rules SET enabled = 0 WHERE id = ?", (rule_id,))
+        db.commit()
+        return True
 
 
 # 告警事件操作
@@ -241,14 +303,29 @@ def save_monitor_data(point_name: str, value: float, raw_value: int, quality: st
         db.commit()
 
 
+def save_batch_monitor_data(data_list: list):
+    """批量保存监控数据"""
+    with get_db() as db:
+        for item in data_list:
+            db.execute("""
+                INSERT INTO monitor_data (point_name, value, raw_value, quality)
+                VALUES (?, ?, ?, ?)
+            """, (item['point'], item['value'], item['raw_value'], item.get('quality', 'good')))
+        db.commit()
+
+
 def get_history_data(point_name: str, hours: int = 24) -> List[Dict]:
+    """获取点位历史数据"""
+    from datetime import datetime, timedelta
+    start_time = datetime.now() - timedelta(hours=hours)
+    
     with get_db() as db:
         cursor = db.execute("""
             SELECT * FROM monitor_data 
             WHERE point_name = ? 
-            AND timestamp > datetime('now', ?)
+            AND timestamp >= ?
             ORDER BY timestamp DESC
-        """, (point_name, f'-{hours} hours'))
+        """, (point_name, start_time.isoformat()))
         return [dict(row) for row in cursor.fetchall()]
 
 
@@ -273,3 +350,113 @@ def add_knowledge(item: Dict) -> int:
               json.dumps(item.get('related_points', []))))
         db.commit()
         return cursor.lastrowid
+
+
+# ============== 告警规则操作（原生SQLite） ==============
+
+def get_enabled_alarm_rules() -> List[Dict]:
+    """获取所有启用的告警规则"""
+    with get_db() as db:
+        cursor = db.execute("""
+            SELECT id, name, point, operator, threshold, severity, message, cooldown_seconds, enabled
+            FROM alarm_rules
+            WHERE enabled = 1
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def create_alarm_log(rule_id: int, point: str, value: float, message: str, severity: str) -> int:
+    """创建告警日志"""
+    with get_db() as db:
+        cursor = db.execute("""
+            INSERT INTO alarm_logs (rule_id, point, value, message, severity, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        """, (rule_id, point, value, message, severity))
+        db.commit()
+        return cursor.lastrowid
+
+
+# 获取已配置的监控变量地址列表
+def get_monitored_addresses() -> List[str]:
+    """获取所有已启用监控变量的地址列表（从 monitor_config 表）"""
+    with get_db() as db:
+        cursor = db.execute("""
+            SELECT DISTINCT p.address
+            FROM monitor_config mc
+            JOIN points p ON mc.point_id = p.id
+            WHERE p.address IS NOT NULL AND p.address != ''
+            ORDER BY mc.display_order
+        """)
+        return [row[0] for row in cursor.fetchall() if row[0]]
+
+
+# 获取监控变量的完整配置（用于前端显示）
+def get_monitored_points_config() -> List[Dict]:
+    """获取监控变量的完整配置（包含点位详情）"""
+    with get_db() as db:
+        cursor = db.execute("""
+            SELECT mc.id, mc.point_id, mc.display_order, 
+                   p.name, p.address, p.data_type, p.description, p.unit, p.category
+            FROM monitor_config mc
+            JOIN points p ON mc.point_id = p.id
+            ORDER BY mc.display_order, mc.id
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+# 监控变量配置操作 (monitor_config表)
+def get_monitor_points() -> List[Dict]:
+    """获取所有监控变量配置"""
+    with get_db() as db:
+        cursor = db.execute("""
+            SELECT mc.id, mc.point_id, mc.display_order, p.name, p.address, p.data_type, p.description, p.unit, p.category
+            FROM monitor_config mc
+            JOIN points p ON mc.point_id = p.id
+            ORDER BY mc.display_order, mc.id
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def add_monitor_point(point_id: int, display_order: int = 0) -> int:
+    """添加监控变量"""
+    with get_db() as db:
+        try:
+            cursor = db.execute("""
+                INSERT INTO monitor_config (point_id, display_order)
+                VALUES (?, ?)
+            """, (point_id, display_order))
+            db.commit()
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            return -1  # 已存在
+        except Exception as e:
+            print(f"⚠️ 添加监控变量失败: {e}")
+            return -1
+
+
+def remove_monitor_point(point_id: int) -> bool:
+    """移除监控变量"""
+    with get_db() as db:
+        db.execute("DELETE FROM monitor_config WHERE point_id = ?", (point_id,))
+        db.commit()
+        return True
+
+
+def set_monitor_points(point_ids: List[int]) -> bool:
+    """设置监控变量列表（先清空再添加）"""
+    with get_db() as db:
+        db.execute("DELETE FROM monitor_config")
+        for idx, point_id in enumerate(point_ids):
+            db.execute("""
+                INSERT INTO monitor_config (point_id, display_order)
+                VALUES (?, ?)
+            """, (point_id, idx))
+        db.commit()
+        return True
+
+
+def is_point_monitored(point_id: int) -> bool:
+    """检查点位是否在监控列表中"""
+    with get_db() as db:
+        cursor = db.execute("SELECT id FROM monitor_config WHERE point_id = ?", (point_id,))
+        return cursor.fetchone() is not None

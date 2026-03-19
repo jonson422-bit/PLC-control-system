@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Literal
 from database import (
-    get_alarm_rules, create_alarm_rule,
+    get_alarm_rules, create_alarm_rule, get_alarm_rule_by_id,
+    update_alarm_rule, delete_alarm_rule,
     get_active_alarms, create_alarm_event, acknowledge_alarm
 )
 
@@ -38,6 +39,35 @@ async def create_rule(rule: CreateAlarmRule):
     """创建告警规则"""
     rule_id = create_alarm_rule(rule.model_dump())
     return {"success": True, "rule_id": rule_id, "message": "告警规则创建成功"}
+
+
+@router.get("/rules/{rule_id}")
+async def get_rule(rule_id: int):
+    """获取单个告警规则"""
+    rule = get_alarm_rule_by_id(rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    return rule
+
+
+@router.put("/rules/{rule_id}")
+async def update_rule(rule_id: int, rule: CreateAlarmRule):
+    """更新告警规则"""
+    existing = get_alarm_rule_by_id(rule_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    update_alarm_rule(rule_id, rule.model_dump())
+    return {"success": True, "message": "告警规则更新成功"}
+
+
+@router.delete("/rules/{rule_id}")
+async def delete_rule(rule_id: int):
+    """删除告警规则"""
+    existing = get_alarm_rule_by_id(rule_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    delete_alarm_rule(rule_id)
+    return {"success": True, "message": "告警规则已删除"}
 
 
 @router.get("")
