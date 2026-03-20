@@ -4,13 +4,16 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Literal
-from database import (
+from ..database import (
     get_alarm_rules, create_alarm_rule, get_alarm_rule_by_id,
     update_alarm_rule, delete_alarm_rule,
-    get_active_alarms, create_alarm_event, acknowledge_alarm
+    get_active_alarms, get_alarms_by_status,
+    create_alarm_event, acknowledge_alarm
 )
+from ..logger import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 class AlarmCondition(BaseModel):
@@ -31,6 +34,11 @@ class CreateAlarmRule(BaseModel):
 async def list_rules():
     """获取告警规则列表"""
     rules = get_alarm_rules()
+    for rule in rules:
+        rule['condition'] = {
+            'operator': rule.pop('operator'),
+            'value': rule.pop('threshold')
+        }
     return {"rules": rules, "count": len(rules)}
 
 
@@ -47,6 +55,10 @@ async def get_rule(rule_id: int):
     rule = get_alarm_rule_by_id(rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="规则不存在")
+    rule['condition'] = {
+        'operator': rule.pop('operator'),
+        'value': rule.pop('threshold')
+    }
     return rule
 
 
@@ -73,11 +85,10 @@ async def delete_rule(rule_id: int):
 @router.get("")
 async def list_alarms(status: str = "active"):
     """获取告警列表"""
-    if status == "active":
-        alarms = get_active_alarms()
+    if status in ("active", "acknowledged", "all"):
+        alarms = get_alarms_by_status(status)
     else:
-        # TODO: 实现其他状态查询
-        alarms = get_active_alarms()
+        alarms = get_alarms_by_status("active")
     return {"alarms": alarms, "count": len(alarms)}
 
 

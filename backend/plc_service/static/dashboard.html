@@ -24,14 +24,21 @@
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
-        header h1 { font-size: 24px; color: #00d9ff; }
-        .status { 
-            display: flex; 
-            align-items: center; 
+        header h1 {
+            font-size: 24px;
+            background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .status {
+            display: flex;
+            align-items: center;
             gap: 10px;
             padding: 8px 16px;
-            background: #0f3460;
+            background: linear-gradient(135deg, #1a3a5c 0%, #0f3460 100%);
             border-radius: 20px;
+            border: 1px solid rgba(0,217,255,0.2);
         }
         .status-dot {
             width: 12px;
@@ -54,17 +61,40 @@
         }
         
         .card {
-            background: #16213e;
-            border-radius: 10px;
+            background: linear-gradient(145deg, #1e2a4a 0%, #16213e 50%, #0f172a 100%);
+            border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.05);
+            position: relative;
+            overflow: hidden;
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #00d9ff, #00ff88, #00d9ff);
+            opacity: 0.6;
         }
         .card h2 {
             font-size: 16px;
-            color: #888;
+            color: #a0aec0;
             margin-bottom: 15px;
             text-transform: uppercase;
             letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card h2::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: linear-gradient(180deg, #00d9ff, #00ff88);
+            border-radius: 2px;
         }
         
         .point-grid {
@@ -73,13 +103,18 @@
             gap: 10px;
         }
         .point {
-            background: #0f3460;
+            background: linear-gradient(135deg, #1a3a5c 0%, #0f3460 100%);
             border-radius: 8px;
             padding: 15px;
             text-align: center;
-            transition: transform 0.2s;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(0,217,255,0.1);
         }
-        .point:hover { transform: translateY(-2px); }
+        .point:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,217,255,0.15);
+            border-color: rgba(0,217,255,0.3);
+        }
         .point-name { font-size: 12px; color: #888; margin-bottom: 5px; }
         .point-value { font-size: 18px; font-weight: bold; }
         .point-value.on { color: #00ff88; }
@@ -92,15 +127,23 @@
             gap: 15px;
         }
         .analog-item {
-            background: #0f3460;
-            border-radius: 8px;
+            background: linear-gradient(145deg, #1a2a4a 0%, #0f3460 100%);
+            border-radius: 12px;
             padding: 20px;
             text-align: center;
+            border: 1px solid rgba(0,217,255,0.1);
+            transition: all 0.3s ease;
+        }
+        .analog-item:hover {
+            box-shadow: 0 5px 20px rgba(0,217,255,0.1);
         }
         .analog-value {
             font-size: 36px;
             font-weight: bold;
-            color: #00d9ff;
+            background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         .analog-unit { font-size: 14px; color: #888; margin-top: 5px; }
         
@@ -115,17 +158,23 @@
             border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
-            transition: all 0.2s;
+            font-weight: 600;
+            transition: all 0.3s ease;
         }
         .control-btn.on {
-            background: #00ff88;
+            background: linear-gradient(135deg, #00ff88 0%, #00d9a0 100%);
             color: #1a1a2e;
+            box-shadow: 0 4px 15px rgba(0,255,136,0.3);
         }
         .control-btn.off {
-            background: #ff4757;
+            background: linear-gradient(135deg, #ff4757 0%, #ff6b7a 100%);
             color: white;
+            box-shadow: 0 4px 15px rgba(255,71,87,0.3);
         }
-        .control-btn:hover { transform: scale(1.05); }
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,217,255,0.4);
+        }
         
         .alarms { max-height: 300px; overflow-y: auto; }
         .alarm-item {
@@ -158,23 +207,38 @@
         }
         .nav-tab {
             padding: 10px 20px;
-            background: #16213e;
-            border: none;
+            background: linear-gradient(135deg, #1a2a4a 0%, #16213e 100%);
+            border: 1px solid rgba(0,217,255,0.1);
             border-radius: 8px;
             color: #888;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
+            font-weight: 500;
         }
         .nav-tab.active {
-            background: #00d9ff;
+            background: linear-gradient(135deg, #00d9ff 0%, #00b8d4 100%);
             color: #1a1a2e;
+            box-shadow: 0 4px 15px rgba(0,217,255,0.3);
+            border-color: transparent;
         }
-        .nav-tab:hover { background: #0f3460; }
+        .nav-tab:hover {
+            background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+            border-color: rgba(0,217,255,0.3);
+            color: #00d9ff;
+        }
         
         /* 设备管理样式 */
         .device-card {
-            background: #0f3460;
-            border-radius: 8px;
+            background: linear-gradient(145deg, #1a2a4a 0%, #0f3460 100%);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid rgba(0,217,255,0.1);
+            transition: all 0.3s ease;
+        }
+        .device-card:hover {
+            border-color: rgba(0,217,255,0.3);
+            box-shadow: 0 8px 25px rgba(0,217,255,0.1);
+        }
             padding: 15px;
             margin-bottom: 15px;
             display: flex;
@@ -274,16 +338,19 @@
                 <span class="status-dot" id="statusDot"></span>
                 <span id="statusText">连接中...</span>
                 <span id="cpuState"></span>
+                <button id="monitorToggleBtn" onclick="toggleSystemMonitor()" style="margin-left:15px;padding:5px 15px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;">
+                    启动监控
+                </button>
             </div>
         </header>
         
         <div class="nav-tabs">
-            <button class="nav-tab" onclick="showTab('monitor')">实时监控</button>
-            <button class="nav-tab" onclick="showTab('history')">历史数据</button>
-            <button class="nav-tab" onclick="showTab('variables')">变量管理</button>
-            <button class="nav-tab" onclick="showTab('alarms')">告警管理</button>
-            <button class="nav-tab" onclick="showTab('devices')">设备管理</button>
-            <button class="nav-tab" onclick="showTab('knowledge')">知识诊断</button>
+            <button class="nav-tab active" onclick="showTab('monitor', this)">实时监控</button>
+            <button class="nav-tab" onclick="showTab('history', this)">历史数据</button>
+            <button class="nav-tab" onclick="showTab('variables', this)">变量管理</button>
+            <button class="nav-tab" onclick="showTab('alarms', this)">告警管理</button>
+            <button class="nav-tab" onclick="showTab('devices', this)">设备管理</button>
+            <button class="nav-tab" onclick="showTab('knowledge', this)">知识诊断</button>
         </div>
         
         <div id="monitorTab">
@@ -304,10 +371,15 @@
                     <h2>内存变量 (M)</h2>
                     <div class="point-grid" id="memory"></div>
                 </div>
-                
+
                 <div class="card">
                     <h2>模拟量输入 (AIW)</h2>
                     <div class="analog-grid" id="analogs"></div>
+                </div>
+
+                <div class="card">
+                    <h2>模拟量输出 (AQW)</h2>
+                    <div class="analog-grid" id="analog-outputs"></div>
                 </div>
             </div>
         </div>
@@ -751,6 +823,25 @@
         let ws = null;
         let wsReconnectTimer = null;
         let heartbeatTimer = null;
+
+        // ============ 工具函数 ============
+        // HTML 转义，防止 XSS
+        function escapeHtml(str) {
+            if (str == null) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        // 封装 fetch，统一错误处理
+        async function apiFetch(url, options = {}) {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                const text = await response.text().catch(() => '');
+                throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+            }
+            return response.json();
+        }
         
         // ============ WebSocket 连接管理 ============
         function connectWebSocket() {
@@ -851,6 +942,78 @@
                 heartbeatTimer = null;
             }
         }
+
+        // ============ 监控控制功能 ============
+        let systemMonitorEnabled = localStorage.getItem('systemMonitorEnabled') === 'true';  // 监控是否启用
+
+        async function toggleSystemMonitor() {
+            const newState = !systemMonitorEnabled;
+            
+            try {
+                const endpoint = newState ? '/api/system/start' : '/api/system/stop';
+                const data = await apiFetch(`${API_URL}${endpoint}`, { method: 'POST' });
+                
+                if (data.success) {
+                    systemMonitorEnabled = newState;
+                    localStorage.setItem('systemMonitorEnabled', systemMonitorEnabled);
+                    updateMonitorButton();
+                    
+                    if (systemMonitorEnabled) {
+                        showToast('监控已启动', 'success');
+                        // 如果WebSocket未连接，尝试连接
+                        if (!ws || ws.readyState !== WebSocket.OPEN) {
+                            connectWebSocket();
+                        }
+                    } else {
+                        showToast('监控已停止，不会发送飞书通知', 'info');
+                        // 停止监控时断开WebSocket
+                        if (ws) {
+                            ws.close();
+                            ws = null;
+                        }
+                    }
+                } else {
+                    showToast('操作失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Toggle monitor error:', error);
+                showToast('操作失败，请检查网络连接', 'error');
+            }
+        }
+
+        function updateMonitorButton() {
+            const btn = document.getElementById('monitorToggleBtn');
+            if (systemMonitorEnabled) {
+                btn.textContent = '停止监控';
+                btn.style.background = '#ff4757';
+                btn.style.color = '#fff';
+            } else {
+                btn.textContent = '启动监控';
+                btn.style.background = '#00d9ff';
+                btn.style.color = '#000';
+            }
+        }
+
+        // 页面加载时检查系统状态
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                // 恢复监控状态并初始化按钮
+                updateMonitorButton();
+                // 如果之前已启用监控且WebSocket未连接，自动重连
+                if (systemMonitorEnabled && (!ws || ws.readyState !== WebSocket.OPEN)) {
+                    connectWebSocket();
+                }
+            } catch (error) {
+                console.error('Check status error:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSystemStatus();
+        });
         
         function scheduleReconnect() {
             if (wsReconnectTimer) return;
@@ -931,6 +1094,7 @@
             const digitalInputs = [];
             const digitalOutputs = [];
             const analogInputs = [];
+            const analogOutputs = [];
             const memoryVars = [];
             
             window.monitorPointsConfig.forEach(mp => {
@@ -959,7 +1123,7 @@
                 } else if (category === 'analog_in' || addr.startsWith('AIW') || addr.startsWith('IW')) {
                     analogInputs.push(displayItem);
                 } else if (category === 'analog_out' || addr.startsWith('AQW') || addr.startsWith('QW')) {
-                    analogInputs.push(displayItem);
+                    analogOutputs.push(displayItem);
                 }
             });
             
@@ -968,6 +1132,7 @@
             renderPointsList('outputs', digitalOutputs, 'bit');
             renderPointsList('memory', memoryVars, 'bit');
             renderPointsList('analogs', analogInputs, 'analog');
+            renderPointsList('analog-outputs', analogOutputs, 'analog');
         }
         
         // 高效渲染点位列表（增量更新）
@@ -1003,6 +1168,13 @@
                 
                 container.innerHTML = '';
                 container.appendChild(fragment);
+
+                // 更新缓存，用于后续增量更新
+                lastPointsData = {};
+                items.forEach(p => {
+                    const key = p.address || p.name;
+                    lastPointsData[key] = { value: p.value, rawValue: p.rawValue };
+                });
             } else {
                 // 列表未变，只更新值
                 items.forEach(p => {
@@ -1015,13 +1187,21 @@
             }
         }
         
+        // 模拟量缩放工具函数
+        function scaleAnalogValue(raw, scaleLow, scaleHigh) {
+            const low = (scaleLow != null) ? Number(scaleLow) : 0;
+            const high = (scaleHigh != null) ? Number(scaleHigh) : 27648;
+            if (high === low) return 0;
+            return ((raw - low) / (high - low)) * 100;
+        }
+
         // 创建点位元素
         function createPointElement(p, type) {
             const key = p.address || p.name;
             
             if (type === 'analog') {
                 const raw = p.rawValue || p.raw_value || 0;
-                const displayValue = (raw / 27648 * 100).toFixed(1);
+                const displayValue = scaleAnalogValue(raw, p.scale_low, p.scale_high).toFixed(1);
                 const displayName = p.name || p.address;
                 const unit = p.unit || '';
                 
@@ -1053,7 +1233,7 @@
         function updatePointElement(element, p, type) {
             if (type === 'analog') {
                 const raw = p.rawValue || p.raw_value || 0;
-                const displayValue = (raw / 27648 * 100).toFixed(1);
+                const displayValue = scaleAnalogValue(raw, p.scale_low, p.scale_high).toFixed(1);
                 const unit = p.unit || '';
                 
                 const valueEl = element.querySelector('.analog-value');
@@ -1075,6 +1255,7 @@
             const digitalInputs = [];
             const digitalOutputs = [];
             const analogInputs = [];
+            const analogOutputs = [];
             const memoryVars = [];
             
             window.monitorPointsConfig.forEach(mp => {
@@ -1089,6 +1270,8 @@
                     digitalOutputs.push(mp);
                 } else if (category === 'analog_in' || addr.startsWith('AIW') || addr.startsWith('IW')) {
                     analogInputs.push(mp);
+                } else if (category === 'analog_out' || addr.startsWith('AQW') || addr.startsWith('QW')) {
+                    analogOutputs.push(mp);
                 }
             });
             
@@ -1097,6 +1280,7 @@
             renderDisconnectedList('outputs', digitalOutputs, 'bit');
             renderDisconnectedList('memory', memoryVars, 'bit');
             renderDisconnectedList('analogs', analogInputs, 'analog');
+            renderDisconnectedList('analog-outputs', analogOutputs, 'analog');
         }
         
         // 渲染断开状态的点位列表
@@ -1187,7 +1371,9 @@
             ['AIW16', 'AIW18', 'AIW20', 'AIW22'].forEach(addr => {
                 const point = data.points[addr];
                 const rawValue = point?.raw_value || 0;
-                const temp = (rawValue / 27648 * 100).toFixed(1);
+                // 从 monitorPointsConfig 中查找 scale 配置
+                const config = window.monitorPointsConfig?.find(mp => mp.address === addr);
+                const temp = scaleAnalogValue(rawValue, config?.scale_low, config?.scale_high).toFixed(1);
                 analogsEl.innerHTML += `
                     <div class="analog-item">
                         <div class="point-name">${addr}</div>
@@ -1202,8 +1388,7 @@
         
         async function loadAlarms() {
             try {
-                const response = await fetch(`${API_URL}/api/alarms?status=active`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/alarms?status=active`);
                 const list = document.getElementById('alarmsList');
                 
                 if (data.alarms.length === 0) {
@@ -1241,8 +1426,7 @@
         
         async function loadAlarmRules() {
             try {
-                const response = await fetch(`${API_URL}/api/alarms/rules`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/alarms/rules`);
                 const list = document.getElementById('alarmRulesList');
                 
                 if (!data.rules || data.rules.length === 0) {
@@ -1353,14 +1537,8 @@
         
         async function editAlarmRule(id) {
             try {
-                const response = await fetch(`${API_URL}/api/alarms/rules`);
-                const data = await response.json();
-                const rule = data.rules.find(r => r.id === id);
-                if (rule) {
-                    showAlarmRuleModal(rule);
-                } else {
-                    alert('找不到该规则');
-                }
+                const rule = await apiFetch(`${API_URL}/api/alarms/rules/${id}`);
+                showAlarmRuleModal(rule);
             } catch (error) {
                 alert('获取规则信息失败: ' + error);
             }
@@ -1394,13 +1572,17 @@
             resultEl.innerHTML = '正在分析...';
             
             try {
-                const response = await fetch(`${API_URL}/api/ai/diagnose`, {
+                const data = await apiFetch(`${API_URL}/api/ai/diagnose`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symptom })
                 });
-                const data = await response.json();
-                resultEl.innerHTML = `<pre style="white-space:pre-wrap;">${data.analysis}</pre>`;
+                // 使用 textContent 防止 XSS（AI 返回内容不可信）
+                const pre = document.createElement('pre');
+                pre.style.whiteSpace = 'pre-wrap';
+                pre.textContent = data.analysis || '无分析结果';
+                resultEl.innerHTML = '';
+                resultEl.appendChild(pre);
             } catch (error) {
                 resultEl.innerHTML = '诊断失败: ' + error;
             }
@@ -1413,8 +1595,7 @@
         
         async function loadProgramList() {
             try {
-                const response = await fetch(`${API_URL}/api/programs`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/programs`);
                 const select = document.getElementById('programSelect');
                 const currentValue = select.value;
                 select.innerHTML = '<option value="">选择程序...</option>';
@@ -1825,14 +2006,15 @@
             }
         }
 
-        function showTab(tab) {
+        function showTab(tab, btn) {
             // 隐藏所有标签
-            document.querySelectorAll('[id$="Tab"]').forEach(el => el.style.display = 'none');
+            const tabs = ['monitorTab', 'historyTab', 'variablesTab', 'alarmsTab', 'devicesTab', 'knowledgeTab'];
+            tabs.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
             document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
 
             // 显示选中的标签
             document.getElementById(tab + 'Tab').style.display = 'block';
-            event.target.classList.add('active');
+            if (btn) btn.classList.add('active');
 
             if (tab === 'alarms') { loadAlarms(); loadAlarmRules(); }
             if (tab === 'variables') loadProgramList();
@@ -1895,8 +2077,7 @@
             }
             
             try {
-                const response = await fetch(`${API_URL}/api/data/point/${encodeURIComponent(point)}?hours=${hours}`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/data/point/${encodeURIComponent(point)}?hours=${hours}`);
                 
                 if (data.count === 0) {
                     document.getElementById('historyChartContainer').style.display = 'none';
@@ -2026,8 +2207,7 @@
             }
             
             try {
-                const response = await fetch(`${API_URL}/api/data/statistics/${encodeURIComponent(point)}?hours=${hours}`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/data/statistics/${encodeURIComponent(point)}?hours=${hours}`);
                 
                 if (data.count === 0) {
                     document.getElementById('statsContainer').style.display = 'none';
@@ -2058,8 +2238,7 @@
         
         async function loadDevices() {
             try {
-                const response = await fetch(`${API_URL}/api/devices`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/devices`);
                 const list = document.getElementById('devicesList');
                 
                 if (data.devices.length === 0) {
@@ -2486,8 +2665,18 @@
                 data_type: document.getElementById('pointDataType').value,
                 unit: document.getElementById('pointUnit').value,
                 description: document.getElementById('pointDesc').value,
-                enabled: document.getElementById('pointEnabled').checked
+                enabled: document.getElementById('pointEnabled').checked,
+                scale: parseFloat(document.getElementById('pointScale').value) || 1,
+                min_value: document.getElementById('pointMin').value !== '' ? parseFloat(document.getElementById('pointMin').value) : null,
+                max_value: document.getElementById('pointMax').value !== '' ? parseFloat(document.getElementById('pointMax').value) : null,
+                log_history: document.getElementById('pointLog').checked
             };
+
+            // 新建点位时发送默认的 scale_low/scale_high，编辑时不发送（保留数据库已有值）
+            if (!editingPointId) {
+                pointData.scale_low = 0;
+                pointData.scale_high = 27648;
+            }
             
             try {
                 const url = editingPointId 

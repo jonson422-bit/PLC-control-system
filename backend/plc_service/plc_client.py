@@ -10,6 +10,10 @@ import threading
 import socket
 from typing import Dict, Optional, Any, List, TypedDict
 from datetime import datetime
+from .logger import get_logger
+
+# 获取日志器
+logger = get_logger(__name__)
 
 
 # ============ 类型定义 ============
@@ -56,34 +60,47 @@ class PLCClient:
         """建立连接"""
         import time
         current_time = time.time()
-        
+
         # 限制重连频率
         if current_time - self._last_connect_attempt < self._reconnect_interval:
             return
-        
+
         self._last_connect_attempt = current_time
-        
+
+        # 先清理旧连接（避免资源泄漏）
+        if self.client is not None:
+            try:
+                self.client.disconnect()
+            except Exception:
+                pass
+            self.client = None
+
         try:
             # 先检查网络连通性
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2)
             result = sock.connect_ex((self.ip, 102))
             sock.close()
-            
+
             if result != 0:
-                print(f"❌ PLC 网络不可达: {self.ip}:102")
-                self.client = None
+                logger.error(f"PLC 网络不可达: {self.ip}:102")
                 self._connected = False
                 return
-            
+
             # 尝试连接
             self.client = snap7.client.Client()
             self.client.set_connection_type(3)
             self.client.connect(self.ip, self.rack, self.slot)
             self._connected = True
-            print(f"✅ PLC 连接成功: {self.ip}")
+            logger.info(f"PLC 连接成功: {self.ip}")
         except Exception as e:
-            print(f"❌ PLC 连接失败: {e}")
+            logger.error(f"PLC 连接失败: {e}")
+            # 清理失败时可能已创建的客户端对象
+            if self.client is not None:
+                try:
+                    self.client.disconnect()
+                except Exception:
+                    pass
             self.client = None
             self._connected = False
 
@@ -93,7 +110,7 @@ class PLCClient:
             try:
                 self.client.disconnect()
             except Exception as e:
-                print(f"⚠️ PLC断开连接时出错: {e}")
+                logger.warning(f"PLC断开连接时出错: {e}")
             self.client = None
         self._connected = False
 
@@ -109,7 +126,7 @@ class PLCClient:
                 self._connected = False
                 return False
         except Exception as e:
-            print(f"⚠️ PLC网络检查失败: {e}")
+            logger.warning(f"PLC网络检查失败: {e}")
             self._connected = False
             return False
         
@@ -131,7 +148,7 @@ class PLCClient:
                 self._connected = True
                 return True
         except Exception as e:
-            print(f"⚠️ PLC连接检查失败: {e}")
+            logger.warning(f"PLC连接检查失败: {e}")
         self._connected = False
         return False
 
@@ -149,7 +166,7 @@ class PLCClient:
             state = self.client.get_cpu_state()
             return str(state)
         except Exception as e:
-            print(f"⚠️ 获取CPU状态失败: {e}")
+            logger.warning(f"获取CPU状态失败: {e}")
             return "UNKNOWN"
 
     def read_bit(self, area: int, byte: int, bit: int) -> bool:
@@ -313,7 +330,7 @@ class PLCClient:
             area, byte_addr, bit_addr, is_bit = self._parse_address(point_name)
             
             if area is None:
-                print(f"无法解析地址: {point_name}")
+                logger.warning(f"无法解析地址: {point_name}")
                 return None
             
             if is_bit:
@@ -324,7 +341,7 @@ class PLCClient:
             self._connected = True
             return value
         except Exception as e:
-            print(f"读取 {point_name} 失败: {e}")
+            logger.error(f"读取 {point_name} 失败: {e}")
             self._connected = False
             return None
 
@@ -388,5 +405,5 @@ class PLCClient:
 
     def read_all_points(self) -> ReadPointsResult:
         """读取所有点位（使用统一的默认点位定义）"""
-        from database import DEFAULT_POINTS
+        from .database import DEFAULT_POINTS
         return self.read_points(DEFAULT_POINTS)

@@ -14,12 +14,14 @@ from pydantic import BaseModel
 import sys
 sys.path.insert(0, '/home/pi/envs/plc_env/lib/python3.11/site-packages')
 
-from stl_parser import STLParser
+from ..stl_parser import STLParser
 import sqlite3
 import asyncio
-from database import DB_PATH  # 使用统一的数据库路径
+from ..database import DB_PATH  # 使用统一的数据库路径
+from ..logger import get_logger
 
-router = APIRouter(prefix="/api/programs", tags=["programs"])
+router = APIRouter(tags=["Program"])
+logger = get_logger(__name__)
 
 # 上传目录 - 统一使用 plc_service/uploads/programs
 UPLOAD_DIR = Path(__file__).parent.parent / "uploads" / "programs"
@@ -81,7 +83,7 @@ async def upload_program(file: UploadFile = File(...)):
             try:
                 text_content = content.decode('latin-1')
             except Exception as e:
-                print(f"⚠️ 文件编码解码失败: {e}")
+                logger.warning(f"文件编码解码失败: {e}")
                 text_content = content.decode('utf-8', errors='replace')
 
     # 生成唯一文件名（避免冲突）
@@ -170,6 +172,15 @@ async def get_program(program_id: int):
     }
 
 
+def _validate_path_within_dir(file_path: Path, base_dir: Path) -> bool:
+    """验证文件路径在允许的目录内（防止路径遍历）"""
+    try:
+        file_path.resolve().relative_to(base_dir.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 @router.delete("/{program_id}")
 async def delete_program(program_id: int):
     """删除程序"""
@@ -178,12 +189,15 @@ async def delete_program(program_id: int):
     # 查找并删除程序
     for i, p in enumerate(data["programs"]):
         if p['id'] == program_id:
-            # 删除文件
+            # 删除文件（验证路径在允许目录内）
             file_path = Path(p.get('path', ''))
             if file_path.exists():
+                if not _validate_path_within_dir(file_path, UPLOAD_DIR):
+                    logger.warning(f"路径遍历攻击尝试: {file_path}")
+                    raise HTTPException(status_code=400, detail="非法文件路径")
                 file_path.unlink()
 
-            # 删除变量文件
+            # 删除变量文件（固定在项目目录内，program_id 为 int 类型安全）
             vars_file = Path(__file__).parent.parent / f"program_{program_id}_vars.json"
             if vars_file.exists():
                 vars_file.unlink()

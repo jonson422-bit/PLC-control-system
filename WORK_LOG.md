@@ -334,4 +334,80 @@ FEISHU_RECEIVE_ID = "ou_a53b3daf1230d6e1c62c3fd411414655"  # open_id
 7. 若 PLC 断开，显示变量列表但值显示"--"
 
 ---
-*日志最后更新: 2026-03-18*
+*日志最后更新: 2026-03-19*
+
+---
+
+## 2026-03-19
+
+### 完成的工作
+
+#### 1. 结构化日志系统（新增）
+- **需求**: 项目使用 print() 输出日志，缺乏日志级别、时间戳、文件输出等功能
+- **文件**: 
+  - `/home/pi/plc-control-system/backend/plc_service/logger.py` - 新建日志模块
+  - `/home/pi/plc-control-system/backend/plc_service/main.py` - 改造
+  - `/home/pi/plc-control-system/backend/plc_service/plc_client.py` - 改造
+  - `/home/pi/plc-control-system/backend/plc_service/routes/*.py` - 改造
+  - `/home/pi/plc-control-system/backend/plc_service/database.py` - 改造
+- **新增功能**:
+  - 统一日志配置模块 `logger.py`
+  - 支持多级别日志: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  - 彩色控制台输出（按级别着色）
+  - 日志文件按日期分割: `logs/plc_service_YYYY-MM-DD.log`
+  - 错误日志单独文件: `logs/error_YYYY-MM-DD.log`
+  - 结构化格式: `时间戳 | 级别 | 模块:行号 | 消息`
+  - 支持 JSON 格式输出（可选）
+  - 环境变量配置: `LOG_LEVEL=DEBUG/INFO/WARNING/ERROR`
+- **日志级别使用规范**:
+  | 级别 | 使用场景 |
+  |------|---------|
+  | DEBUG | API响应详情、变量值 |
+  | INFO | 服务启动/停止、连接成功 |
+  | WARNING | 配置缺失、重试中 |
+  | ERROR | 单次读取失败、API调用失败 |
+  | CRITICAL | PLC断连、严重错误 |
+- **使用方法**:
+  ```python
+  from logger import get_logger
+  logger = get_logger(__name__)
+  logger.info("服务启动")
+  logger.error(f"连接失败: {e}")
+  ```
+
+#### 2. 后台任务优雅取消（新增）
+- **需求**: 后台任务 (data_pusher, alarm_monitor, connection_monitor) 没有正确的取消机制
+- **问题**: 
+  - 调用 `cancel()` 后没有等待取消完成
+  - 任务循环没有捕获 `CancelledError` 进行优雅退出
+- **文件**: `/home/pi/plc-control-system/backend/plc_service/main.py`
+- **修复**:
+  - 每个后台任务添加 `try...except CancelledError` 处理
+  - lifespan 使用 `asyncio.gather()` 等待所有任务取消完成
+  - 添加 HTTP 客户端关闭 `close_http_client()`
+
+#### 3. WebSocket 超时和心跳机制（新增）
+- **需求**: WebSocket 连接无超时处理，僵死连接占用资源
+- **文件**: `/home/pi/plc-control-system/backend/plc_service/main.py`
+- **新增功能**:
+  - 空闲超时检测: `WS_IDLE_TIMEOUT = 120.0` (秒)
+  - 心跳间隔: `WS_PING_INTERVAL = 30.0` (秒)
+  - 服务端主动发送心跳检测
+  - 超时自动断开连接
+  - ConnectionManager 添加连接活动时间跟踪
+
+#### 4. HTTP 客户端优化（新增）
+- **需求**: 每次飞书请求创建新 HTTP 客户端，无法复用连接池
+- **文件**: `/home/pi/plc-control-system/backend/plc_service/main.py`
+- **修复**:
+  - 创建全局异步客户端 `get_http_client()`
+  - 配置连接池: `max_connections=10, max_keepalive_connections=5`
+  - 飞书 API 调用改为使用全局客户端
+  - 应用关闭时正确清理客户端
+
+#### 5. PLC 客户端资源清理（新增）
+- **需求**: PLC 连接异常时可能存在资源泄漏
+- **文件**: `/home/pi/plc-control-system/backend/plc_service/plc_client.py`
+- **修复**:
+  - `_connect()` 方法在创建新连接前先清理旧连接
+  - 连接失败时清理可能已创建的 snap7 客户端对象

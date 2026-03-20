@@ -7,6 +7,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
+from .logger import get_logger
+
+logger = get_logger(__name__)
 
 DB_PATH = Path(__file__).parent / "plc_control.db"
 
@@ -271,6 +274,27 @@ def get_active_alarms() -> List[Dict]:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_alarms_by_status(status: str) -> List[Dict]:
+    """按状态查询告警事件 (active/acknowledged/all)"""
+    with get_db() as db:
+        if status == 'all':
+            cursor = db.execute("""
+                SELECT ae.*, ar.name as rule_name
+                FROM alarm_events ae
+                LEFT JOIN alarm_rules ar ON ae.rule_id = ar.id
+                ORDER BY ae.created_at DESC
+            """)
+        else:
+            cursor = db.execute("""
+                SELECT ae.*, ar.name as rule_name
+                FROM alarm_events ae
+                LEFT JOIN alarm_rules ar ON ae.rule_id = ar.id
+                WHERE ae.status = ?
+                ORDER BY ae.created_at DESC
+            """, (status,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
 def create_alarm_event(event: Dict) -> int:
     with get_db() as db:
         cursor = db.execute("""
@@ -395,8 +419,9 @@ def get_monitored_points_config() -> List[Dict]:
     """获取监控变量的完整配置（包含点位详情）"""
     with get_db() as db:
         cursor = db.execute("""
-            SELECT mc.id, mc.point_id, mc.display_order, 
-                   p.name, p.address, p.data_type, p.description, p.unit, p.category
+            SELECT mc.id, mc.point_id, mc.display_order,
+                   p.name, p.address, p.data_type, p.description, p.unit, p.category,
+                   p.scale_low, p.scale_high
             FROM monitor_config mc
             JOIN points p ON mc.point_id = p.id
             ORDER BY mc.display_order, mc.id
@@ -409,7 +434,8 @@ def get_monitor_points() -> List[Dict]:
     """获取所有监控变量配置"""
     with get_db() as db:
         cursor = db.execute("""
-            SELECT mc.id, mc.point_id, mc.display_order, p.name, p.address, p.data_type, p.description, p.unit, p.category
+            SELECT mc.id, mc.point_id, mc.display_order, p.name, p.address, p.data_type, p.description, p.unit, p.category,
+                   p.scale_low, p.scale_high
             FROM monitor_config mc
             JOIN points p ON mc.point_id = p.id
             ORDER BY mc.display_order, mc.id
@@ -430,7 +456,7 @@ def add_monitor_point(point_id: int, display_order: int = 0) -> int:
         except sqlite3.IntegrityError:
             return -1  # 已存在
         except Exception as e:
-            print(f"⚠️ 添加监控变量失败: {e}")
+            logger.error(f"添加监控变量失败: {e}")
             return -1
 
 

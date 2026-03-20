@@ -3,19 +3,31 @@ PLC 操作路由 - 只读模式（安全保护）
 写入功能已被移除，系统只能读取PLC数据，禁止任何写入操作
 """
 from fastapi import APIRouter, HTTPException
-from database import DEFAULT_POINTS  # 使用统一的默认点位定义
+from ..database import DEFAULT_POINTS  # 使用统一的默认点位定义
+from ..logger import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 # ============ 安全配置 ============
 # 只读模式：系统只能读取PLC数据，禁止写入
 READ_ONLY_MODE = True
 # ==================================
 
+# PLC 客户端引用（由 main.py 在启动时注入）
+_plc_client = None
+
+
+def set_plc_client(client):
+    """注入 PLC 客户端实例（由 main.py 调用）"""
+    global _plc_client
+    _plc_client = client
+
 
 def get_plc_client():
-    from main import plc_client
-    return plc_client
+    if _plc_client is None:
+        raise RuntimeError("PLC 客户端未初始化")
+    return _plc_client
 
 
 @router.get("/read")

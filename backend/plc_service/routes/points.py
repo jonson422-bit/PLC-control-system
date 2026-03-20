@@ -6,9 +6,11 @@ from pydantic import BaseModel
 from typing import Optional, List
 import sqlite3
 import asyncio
-from database import get_db, DB_PATH
+from ..database import get_db, DB_PATH
+from ..logger import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 class PointConfig(BaseModel):
@@ -190,7 +192,8 @@ async def get_monitor_points():
     def _query():
         with get_db() as db:
             cursor = db.execute("""
-                SELECT mc.id, mc.point_id, mc.display_order, p.name, p.address, p.data_type, p.description, p.unit, p.category
+                SELECT mc.id, mc.point_id, mc.display_order, p.name, p.address, p.data_type, p.description, p.unit, p.category,
+                       p.scale_low, p.scale_high
                 FROM monitor_config mc
                 JOIN points p ON mc.point_id = p.id
                 ORDER BY mc.display_order, mc.id
