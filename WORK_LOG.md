@@ -163,7 +163,7 @@
 ### 飞书通知配置
 ```python
 FEISHU_APP_ID = "cli_a92aea1a6078dbd9"
-FEISHU_APP_SECRET = "qY45lm03uygEStes3Dum0no8o5jjAmdu"
+FEISHU_APP_SECRET = ""
 FEISHU_RECEIVE_ID = "ou_a53b3daf1230d6e1c62c3fd411414655"  # open_id
 ```
 
