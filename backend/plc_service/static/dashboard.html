@@ -1966,9 +1966,20 @@
                 const response = await fetch(`${API_URL}/api/points/monitor/list`);
                 const data = await response.json();
                 monitoredPointIds = data.map(p => p.point_id);
+                window.monitorPointsConfig = data;
+
+                // 如果没有 WebSocket 数据推送，且 PLC 未连接，显示断开状态的监控变量
+                if (data && data.length > 0) {
+                    const healthResponse = await fetch(`${API_URL}/health`);
+                    const health = await healthResponse.json();
+                    if (!health.plc_connected) {
+                        updateDisconnectedMonitor();
+                    }
+                }
             } catch (error) {
                 console.error('Load monitor points error:', error);
                 monitoredPointIds = [];
+                window.monitorPointsConfig = [];
             }
         }
 
@@ -2021,6 +2032,7 @@
             }
         }
 
+        let tabLoadTimers = {};
         function showTab(tab, btn) {
             // 隐藏所有标签
             const tabs = ['monitorTab', 'historyTab', 'variablesTab', 'alarmsTab', 'devicesTab', 'knowledgeTab'];
@@ -2031,11 +2043,15 @@
             document.getElementById(tab + 'Tab').style.display = 'block';
             if (btn) btn.classList.add('active');
 
-            if (tab === 'alarms') { loadAlarms(); loadAlarmRules(); }
-            if (tab === 'variables') loadProgramList();
-            if (tab === 'devices') loadDevices();
-            if (tab === 'knowledge') loadKnowledge();
-            if (tab === 'history') loadHistoryPointOptions();
+            // 防抖：快速切换时只执行最后一次加载
+            if (tabLoadTimers[tab]) clearTimeout(tabLoadTimers[tab]);
+            tabLoadTimers[tab] = setTimeout(() => {
+                if (tab === 'alarms') { loadAlarms(); loadAlarmRules(); }
+                if (tab === 'variables') loadProgramList();
+                if (tab === 'devices') loadDevices();
+                if (tab === 'knowledge') loadKnowledge();
+                if (tab === 'history') loadHistoryPointOptions();
+            }, 200);
         }
         
         // ============ 历史数据功能 ============
@@ -2548,16 +2564,20 @@
         }
         
         // 知识库搜索
+        let knowledgeSearchTimer = null;
         document.getElementById('knowledgeSearch')?.addEventListener('input', async function(e) {
             const query = e.target.value.trim();
+            // 防抖：300ms 内只执行最后一次
+            clearTimeout(knowledgeSearchTimer);
             if (query.length < 2) {
                 loadKnowledge();
                 return;
             }
-            try {
-                const response = await fetch(`${API_URL}/api/knowledge/search/${encodeURIComponent(query)}`);
-                const data = await response.json();
-                const list = document.getElementById('knowledgeList');
+            knowledgeSearchTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`${API_URL}/api/knowledge/search/${encodeURIComponent(query)}`);
+                    const data = await response.json();
+                    const list = document.getElementById('knowledgeList');
                 if (data.results.length === 0) {
                     list.innerHTML = '<p style="color:#888;text-align:center;padding:40px;">未找到匹配的知识</p>';
                     return;
@@ -2580,6 +2600,7 @@
             } catch (error) {
                 console.error('Search error:', error);
             }
+            }, 300);
         });
         
         // ============ 点位管理功能 ============
