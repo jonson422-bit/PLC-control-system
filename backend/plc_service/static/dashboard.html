@@ -52,6 +52,8 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
         
         .grid {
             display: grid;
@@ -99,7 +101,7 @@
         
         .point-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
             gap: 10px;
         }
         .point {
@@ -123,7 +125,7 @@
         
         .analog-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 15px;
         }
         .analog-item {
@@ -239,6 +241,7 @@
             border-color: rgba(0,217,255,0.3);
             box-shadow: 0 8px 25px rgba(0,217,255,0.1);
         }
+        .device-card-body {
             padding: 15px;
             margin-bottom: 15px;
             display: flex;
@@ -823,6 +826,9 @@
         let ws = null;
         let wsReconnectTimer = null;
         let heartbeatTimer = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 20;
+        const RECONNECT_BASE_DELAY = 3000;
 
         // ============ 工具函数 ============
         // HTML 转义，防止 XSS
@@ -851,7 +857,8 @@
             ws = new WebSocket(wsUrl);
             
             ws.onopen = function() {
-                console.log('✅ WebSocket 已连接');
+                console.log('WebSocket 已连接');
+                reconnectAttempts = 0;
                 startHeartbeat();
             };
             
@@ -1017,10 +1024,18 @@
         
         function scheduleReconnect() {
             if (wsReconnectTimer) return;
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                console.warn('WebSocket 达到最大重连次数，停止重连');
+                showToast('WebSocket 连接已断开，请刷新页面', 'warning');
+                return;
+            }
+            const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(1.5, reconnectAttempts), 60000);
+            reconnectAttempts++;
+            console.log(`WebSocket 将在 ${Math.round(delay/1000)}s 后重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
             wsReconnectTimer = setTimeout(() => {
                 wsReconnectTimer = null;
                 connectWebSocket();
-            }, 3000); // 3秒后重连
+            }, delay);
         }
         
         function showToast(message, severity = 'info') {
@@ -1032,8 +1047,8 @@
                 bottom: 20px;
                 right: 20px;
                 padding: 12px 20px;
-                background: ${severity === 'critical' ? '#ff4757' : severity === 'warning' ? '#ffc107' : '#00d9ff'};
-                color: ${severity === 'warning' ? '#333' : '#fff'};
+                background: ${severity === 'critical' ? '#ff4757' : severity === 'warning' ? '#ffc107' : severity === 'success' ? '#00ff88' : '#00d9ff'};
+                color: ${severity === 'warning' || severity === 'success' ? '#1a1a2e' : '#fff'};
                 border-radius: 8px;
                 z-index: 2000;
                 animation: fadeIn 0.3s;
