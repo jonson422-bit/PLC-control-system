@@ -4,7 +4,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
-import database as db
+from .. import database as db
 import json
 import os
 import re

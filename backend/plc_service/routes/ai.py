@@ -7,9 +7,11 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 import httpx
 import json
-import database as db
+from .. import database as db
+from ..logger import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 OLLAMA_URL = "http://localhost:11434"
 DEFAULT_MODEL = "deepseek-r1:1.5b"  # 使用最快的模型
@@ -42,7 +44,7 @@ async def check_ollama_health() -> bool:
             response = await client.get(f"{OLLAMA_URL}/api/tags")
             return response.status_code == 200
     except Exception as e:
-        print(f"⚠️ Ollama健康检查失败: {e}")
+        logger.warning(f"Ollama健康检查失败: {e}")
         return False
 
 
@@ -94,7 +96,7 @@ def get_knowledge_context(query: str, limit: int = 3) -> str:
 """
         return context
     except Exception as e:
-        print(f"知识库查询错误: {e}")
+        logger.error(f"知识库查询错误: {e}")
         return ""
 
 

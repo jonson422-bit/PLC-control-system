@@ -5,9 +5,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import asyncio
-from database import get_db
+from ..database import get_db
+from ..logger import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 class DeviceConfig(BaseModel):
@@ -112,7 +114,7 @@ async def delete_device(device_id: int, force: bool = False):
                 # 先删除关联的点位
                 db.execute("DELETE FROM monitor_config WHERE point_id IN (SELECT id FROM points WHERE device_id = ?)", (device_id,))
                 db.execute("DELETE FROM points WHERE device_id = ?", (device_id,))
-                print(f"🗑️ 已删除设备 {device_id} 的 {point_count} 个关联点位")
+                logger.info(f"已删除设备 {device_id} 的 {point_count} 个关联点位")
             
             db.execute("DELETE FROM devices WHERE id = ?", (device_id,))
             db.commit()
@@ -150,7 +152,7 @@ async def test_connection(device_id: int):
             connected = test_client.is_connected()
             return connected
         except Exception as e:
-            print(f"⚠️ 设备连接测试失败: {e}")
+            logger.warning(f"设备连接测试失败: {e}")
             return False
         finally:
             # 确保无论如何都清理资源
@@ -158,7 +160,7 @@ async def test_connection(device_id: int):
                 try:
                     test_client.disconnect()
                 except Exception as e:
-                    print(f"⚠️ 断开测试连接时出错: {e}")
+                    logger.warning(f"断开测试连接时出错: {e}")
     
     connected = await asyncio.to_thread(_test)
     
