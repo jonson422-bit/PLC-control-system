@@ -403,7 +403,8 @@
                             <option value="72">最近3天</option>
                             <option value="168">最近7天</option>
                         </select>
-                        <button onclick="loadHistoryChart()" style="padding:8px 16px;background:#00d9ff;border:none;border-radius:5px;color:#1a1a2e;cursor:pointer;font-weight:500;">📊 查询</button>
+                        <button onclick="loadHistoryChart()" style="padding:8px 16px;background:#00d9ff;border:none;border-radius:5px;color:#1a1a2e;cursor:pointer;font-weight:500;">查询</button>
+                        <button onclick="exportHistoryCSV()" style="padding:8px 16px;background:#16213e;border:1px solid #2d2d44;border-radius:5px;color:#eee;cursor:pointer;font-weight:500;">导出 CSV</button>
                     </div>
                 </div>
                 <div id="historyChartContainer" style="background:#0f3460;border-radius:8px;padding:20px;min-height:300px;">
@@ -829,6 +830,81 @@
         let reconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 20;
         const RECONNECT_BASE_DELAY = 3000;
+        let authToken = localStorage.getItem('plc_auth_token') || '';
+
+        // ============ 认证 ============
+        function getAuthHeaders() {
+            const headers = {};
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+            return headers;
+        }
+
+        async function checkAuth() {
+            try {
+                const headers = getAuthHeaders();
+                const resp = await fetch(`${API_URL}/api/auth/verify`, {
+                    method: 'POST',
+                    headers: { ...headers, 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json();
+                if (data.auth_enabled === false) {
+                    // 认证未启用，直接放行
+                    return true;
+                }
+                if (data.authenticated) {
+                    return true;
+                }
+            } catch (e) {
+                // 401 或网络错误
+            }
+            return false;
+        }
+
+        function showLoginDialog() {
+            // 创建遮罩和登录框
+            const overlay = document.createElement('div');
+            overlay.id = 'authOverlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10000;';
+            overlay.innerHTML = `
+                <div style="background:#1a1a2e;border:1px solid #2d2d44;border-radius:12px;padding:40px;width:360px;text-align:center;">
+                    <h3 style="color:#00d9ff;margin:0 0 20px;font-size:18px;">PLC 智能管控系统</h3>
+                    <input id="authTokenInput" type="password" placeholder="请输入访问令牌"
+                        style="width:100%;padding:10px 12px;border:1px solid #333;border-radius:6px;background:#0d0d1a;color:#fff;font-size:14px;box-sizing:border-box;margin-bottom:16px;">
+                    <div id="authError" style="color:#ff4444;font-size:13px;margin-bottom:12px;display:none;">认证失败，请检查令牌</div>
+                    <button id="authSubmitBtn" style="width:100%;padding:10px;border:none;border-radius:6px;background:#00d9ff;color:#000;font-size:14px;font-weight:bold;cursor:pointer;">
+                        登录
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            document.getElementById('authTokenInput').focus();
+
+            document.getElementById('authSubmitBtn').onclick = async function() {
+                const token = document.getElementById('authTokenInput').value.trim();
+                if (!token) return;
+                try {
+                    const resp = await fetch(`${API_URL}/api/auth/verify`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                    });
+                    if (resp.ok) {
+                        authToken = token;
+                        localStorage.setItem('plc_auth_token', token);
+                        document.getElementById('authOverlay').remove();
+                        initializeApp();
+                    } else {
+                        document.getElementById('authError').style.display = 'block';
+                    }
+                } catch (e) {
+                    document.getElementById('authError').style.display = 'block';
+                }
+            };
+            document.getElementById('authTokenInput').onkeydown = function(e) {
+                if (e.key === 'Enter') document.getElementById('authSubmitBtn').click();
+            };
+        }
 
         // ============ 工具函数 ============
         // HTML 转义，防止 XSS
@@ -839,9 +915,21 @@
             return div.innerHTML;
         }
 
-        // 封装 fetch，统一错误处理
+        // 封装 fetch，统一错误处理 + 自动认证
         async function apiFetch(url, options = {}) {
-            const response = await fetch(url, options);
+            // 合并认证 header
+            const headers = { ...getAuthHeaders(), ...options.headers };
+            if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
+                headers['Content-Type'] = 'application/json';
+            }
+            const response = await fetch(url, { ...options, headers });
+            if (response.status === 401) {
+                // Token 过期或无效，弹出登录
+                authToken = '';
+                localStorage.removeItem('plc_auth_token');
+                showLoginDialog();
+                throw new Error('认证已过期');
+            }
             if (!response.ok) {
                 const text = await response.text().catch(() => '');
                 throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
@@ -1018,8 +1106,18 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
+        // 应用初始化
+        function initializeApp() {
             checkSystemStatus();
+        }
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            const authenticated = await checkAuth();
+            if (authenticated) {
+                initializeApp();
+            } else {
+                showLoginDialog();
+            }
         });
         
         function scheduleReconnect() {
@@ -1068,7 +1166,7 @@
         // 保留 fetchData 作为备用（WebSocket 断开时使用）
         async function fetchData() {
             try {
-                const response = await fetch(`${API_URL}/api/plc/read`);
+                const response = await apiFetch(`${API_URL}/api/plc/read`);
                 const data = await response.json();
                 updateUI(data);
                 updateStatus(true, data.cpu_state);
@@ -1204,10 +1302,8 @@
         
         // 模拟量缩放工具函数
         function scaleAnalogValue(raw, scaleLow, scaleHigh) {
-            const low = (scaleLow != null) ? Number(scaleLow) : 0;
-            const high = (scaleHigh != null) ? Number(scaleHigh) : 27648;
-            if (high === low) return 0;
-            return ((raw - low) / (high - low)) * 100;
+            // 优先使用后端计算的换算值，无则本地计算百分比
+            return 0;
         }
 
         // 创建点位元素
@@ -1216,9 +1312,10 @@
             
             if (type === 'analog') {
                 const raw = p.rawValue || p.raw_value || 0;
-                const displayValue = scaleAnalogValue(raw, p.scale_low, p.scale_high).toFixed(1);
                 const displayName = p.name || p.address;
                 const unit = p.unit || '';
+                const scaled = p.scaled_value;
+                const displayValue = (scaled != null) ? scaled : raw;
                 
                 const div = document.createElement('div');
                 div.className = 'analog-item';
@@ -1248,7 +1345,8 @@
         function updatePointElement(element, p, type) {
             if (type === 'analog') {
                 const raw = p.rawValue || p.raw_value || 0;
-                const displayValue = scaleAnalogValue(raw, p.scale_low, p.scale_high).toFixed(1);
+                const scaled = p.scaled_value;
+                const displayValue = (scaled != null) ? scaled : raw;
                 const unit = p.unit || '';
                 
                 const valueEl = element.querySelector('.analog-value');
@@ -1388,7 +1486,7 @@
                 const rawValue = point?.raw_value || 0;
                 // 从 monitorPointsConfig 中查找 scale 配置
                 const config = window.monitorPointsConfig?.find(mp => mp.address === addr);
-                const temp = scaleAnalogValue(rawValue, config?.scale_low, config?.scale_high).toFixed(1);
+                const temp = rawValue; // 断开时无实际数据，显示原始值
                 analogsEl.innerHTML += `
                     <div class="analog-item">
                         <div class="point-name">${addr}</div>
@@ -1429,7 +1527,7 @@
         
         async function ackAlarm(id) {
             try {
-                await fetch(`${API_URL}/api/alarms/${id}/acknowledge`, { method: 'POST' });
+                await apiFetch(`${API_URL}/api/alarms/${id}/acknowledge`, { method: 'POST' });
                 loadAlarms();
             } catch (error) {
                 alert('确认失败: ' + error);
@@ -1532,14 +1630,12 @@
                     : `${API_URL}/api/alarms/rules`;
                 const method = editingAlarmRuleId ? 'PUT' : 'POST';
                 
-                const response = await fetch(url, {
+                const response = await apiFetch(url, {
                     method,
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(ruleData)
                 });
                 
-                const data = await response.json();
-                if (data.success || data.rule_id) {
+                if (response.success || response.rule_id) {
                     closeAlarmRuleModal();
                     loadAlarmRules();
                 } else {
@@ -1563,8 +1659,7 @@
             if (!confirm('确定要删除这条告警规则吗？')) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/alarms/rules/${id}`, { method: 'DELETE' });
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/alarms/rules/${id}`, { method: 'DELETE' });
                 if (data.success || data.message) {
                     loadAlarmRules();
                 } else {
@@ -1637,6 +1732,7 @@
             try {
                 const response = await fetch(`${API_URL}/api/programs/upload`, {
                     method: 'POST',
+                    headers: getAuthHeaders(),
                     body: formData
                 });
                 const data = await response.json();
@@ -1674,8 +1770,7 @@
                 await loadMonitorPoints();
                 
                 // 获取程序变量（包含导入状态）
-                const response = await fetch(`${API_URL}/api/programs/${programId}/variables`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/programs/${programId}/variables`);
                 
                 allVariables = data.variables || [];
                 
@@ -1819,10 +1914,9 @@
             if (!confirm('确定要导入所有未导入的变量到点位配置吗？')) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/programs/${currentProgramId}/import?overwrite=false`, {
+                const data = await apiFetch(`${API_URL}/api/programs/${currentProgramId}/import?overwrite=false`, {
                     method: 'POST'
                 });
-                const data = await response.json();
                 
                 if (data.success) {
                     showToast(data.message, 'success');
@@ -1855,12 +1949,10 @@
             });
             
             try {
-                const response = await fetch(`${API_URL}/api/programs/variables/import-selected?overwrite=false`, {
+                const data = await apiFetch(`${API_URL}/api/programs/variables/import-selected?overwrite=false`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(variablesToImport)
                 });
-                const data = await response.json();
                 
                 if (data.success) {
                     showToast(data.message, 'success');
@@ -1884,12 +1976,10 @@
             };
             
             try {
-                const response = await fetch(`${API_URL}/api/programs/variables/import-selected?overwrite=false`, {
+                const data = await apiFetch(`${API_URL}/api/programs/variables/import-selected?overwrite=false`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify([variableData])
                 });
-                const data = await response.json();
                 
                 if (data.success) {
                     showToast('导入成功', 'success');
@@ -1907,8 +1997,7 @@
             if (v.point_id) {
                 // 如果已导入，加载点位信息进行编辑
                 try {
-                    const response = await fetch(`${API_URL}/api/points/${v.point_id}`);
-                    const point = await response.json();
+                    const point = await apiFetch(`${API_URL}/api/points/${v.point_id}`);
                     showPointModal(point);
                 } catch (error) {
                     alert('获取点位信息失败: ' + error);
@@ -1926,8 +2015,7 @@
             if (!confirm(`确定要删除点位 "${v.address}" 吗？\n删除后变量将变为未导入状态。`)) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/points/${v.point_id}`, { method: 'DELETE' });
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/points/${v.point_id}`, { method: 'DELETE' });
                 if (data.success || data.message) {
                     showToast('点位已删除', 'success');
                     await loadProgramVariables();
@@ -1948,7 +2036,7 @@
             if (!confirm('确定要删除这个程序吗？相关的点位配置不会被删除。')) return;
 
             try {
-                await fetch(`${API_URL}/api/programs/${currentProgramId}`, { method: 'DELETE' });
+                await apiFetch(`${API_URL}/api/programs/${currentProgramId}`, { method: 'DELETE' });
                 showToast('程序已删除', 'success');
                 currentProgramId = null;
                 document.getElementById('currentProgramInfo').style.display = 'none';
@@ -1963,8 +2051,7 @@
         // ============ 监控变量管理功能 ============
         async function loadMonitorPoints() {
             try {
-                const response = await fetch(`${API_URL}/api/points/monitor/list`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/points/monitor/list`);
                 monitoredPointIds = data.map(p => p.point_id);
                 window.monitorPointsConfig = data;
 
@@ -1987,10 +2074,10 @@
             if (!pointId) return;
             try {
                 if (checked) {
-                    await fetch(`${API_URL}/api/points/monitor/add/${pointId}`, { method: 'POST' });
+                    await apiFetch(`${API_URL}/api/points/monitor/add/${pointId}`, { method: 'POST' });
                     showToast('已添加到监控列表', 'success');
                 } else {
-                    await fetch(`${API_URL}/api/points/monitor/remove/${pointId}`, { method: 'DELETE' });
+                    await apiFetch(`${API_URL}/api/points/monitor/remove/${pointId}`, { method: 'DELETE' });
                     showToast('已从监控列表移除', 'success');
                 }
                 await loadMonitorPoints();
@@ -2013,8 +2100,7 @@
         
         async function loadMonitorPointsConfig() {
             try {
-                const response = await fetch(`${API_URL}/api/points/monitor/list`);
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/points/monitor/list`);
                 window.monitorPointsConfig = data;
                 
                 // 如果没有 WebSocket 数据推送，且 PLC 未连接，显示断开状态的监控变量
@@ -2133,6 +2219,34 @@
             } catch (error) {
                 console.error('Load history chart error:', error);
                 alert('加载历史数据失败: ' + error);
+            }
+        }
+
+        async function exportHistoryCSV() {
+            const point = document.getElementById('historyPointSelect').value;
+            const hours = document.getElementById('historyHours').value;
+            if (!point) {
+                showToast('请先选择变量点位', 'warning');
+                return;
+            }
+            try {
+                const resp = await fetch(`${API_URL}/api/data/export?point=${encodeURIComponent(point)}&hours=${hours}`, {
+                    headers: getAuthHeaders()
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const blob = await resp.blob();
+                const disposition = resp.headers.get('Content-Disposition') || '';
+                const match = disposition.match(/filename=(.+)/);
+                const filename = match ? match[1] : `${point}_${hours}h.csv`;
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('CSV 导出成功', 'success');
+            } catch (error) {
+                showToast('导出失败: ' + error, 'error');
             }
         }
         
@@ -2334,14 +2448,12 @@
                     : `${API_URL}/api/devices`;
                 const method = editingDeviceId ? 'PUT' : 'POST';
                 
-                const response = await fetch(url, {
+                const response = await apiFetch(url, {
                     method,
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(deviceData)
                 });
                 
-                const data = await response.json();
-                if (data.success || data.device_id) {
+                if (response.success || response.device_id) {
                     closeDeviceModal();
                     loadDevices();
                 } else {
@@ -2354,8 +2466,7 @@
         
         async function editDevice(deviceId) {
             try {
-                const response = await fetch(`${API_URL}/api/devices/${deviceId}`);
-                const device = await response.json();
+                const device = await apiFetch(`${API_URL}/api/devices/${deviceId}`);
                 showDeviceModal(device);
             } catch (error) {
                 alert('获取设备信息失败: ' + error);
@@ -2367,8 +2478,7 @@
             if (!confirm('确定要删除这个设备吗？')) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/devices/${deviceId}`, { method: 'DELETE' });
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/devices/${deviceId}`, { method: 'DELETE' });
                 console.log('Delete response:', data);
                 if (data.success) {
                     loadDevices();
@@ -2383,8 +2493,7 @@
         
         async function testDevice(deviceId) {
             try {
-                const response = await fetch(`${API_URL}/api/devices/${deviceId}/test`, { method: 'POST' });
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/devices/${deviceId}/test`, { method: 'POST' });
                 alert(data.message);
             } catch (error) {
                 alert('测试失败: ' + error);
@@ -2400,12 +2509,10 @@
                 const url = category 
                     ? `${API_URL}/api/knowledge/list?category=${encodeURIComponent(category)}`
                     : `${API_URL}/api/knowledge/list`;
-                const response = await fetch(url);
-                const data = await response.json();
+                const data = await apiFetch(url);
                 
                 // 更新分类列表
-                const catResponse = await fetch(`${API_URL}/api/knowledge/categories`);
-                const catData = await catResponse.json();
+                const catData = await apiFetch(`${API_URL}/api/knowledge/categories`);
                 const catSelect = document.getElementById('knowledgeCategory');
                 const currentCat = catSelect.value;
                 catSelect.innerHTML = '<option value="">所有分类</option>';
@@ -2450,8 +2557,7 @@
         
         async function viewKnowledge(id) {
             try {
-                const response = await fetch(`${API_URL}/api/knowledge/${id}`);
-                const item = await response.json();
+                const item = await apiFetch(`${API_URL}/api/knowledge/${id}`);
                 alert(`【${item.title}】\n\n分类: ${item.category}\n\n${item.content}\n\n关键词: ${item.keywords?.join(', ') || '无'}\n关联点位: ${item.related_points?.join(', ') || '无'}`);
             } catch (error) {
                 alert('获取详情失败: ' + error);
@@ -2460,8 +2566,7 @@
         
         async function editKnowledge(id) {
             try {
-                const response = await fetch(`${API_URL}/api/knowledge/${id}`);
-                const item = await response.json();
+                const item = await apiFetch(`${API_URL}/api/knowledge/${id}`);
                 showKnowledgeModal(item);
             } catch (error) {
                 alert('获取知识信息失败: ' + error);
@@ -2507,14 +2612,12 @@
                     : `${API_URL}/api/knowledge/add`;
                 const method = editingKnowledgeId ? 'PUT' : 'POST';
                 
-                const response = await fetch(url, {
+                const response = await apiFetch(url, {
                     method,
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(knowledgeData)
                 });
                 
-                const data = await response.json();
-                if (data.id || data.message) {
+                if (response.id || response.message) {
                     closeKnowledgeModal();
                     loadKnowledge();
                 } else {
@@ -2529,8 +2632,7 @@
             if (!confirm('确定要删除这条知识吗？')) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/knowledge/${id}`, { method: 'DELETE' });
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/knowledge/${id}`, { method: 'DELETE' });
                 if (data.message) {
                     loadKnowledge();
                 } else {
@@ -2552,6 +2654,7 @@
             try {
                 const response = await fetch(`${API_URL}/api/knowledge/upload`, {
                     method: 'POST',
+                    headers: getAuthHeaders(),
                     body: formData
                 });
                 const data = await response.json();
@@ -2575,7 +2678,7 @@
             }
             knowledgeSearchTimer = setTimeout(async () => {
                 try {
-                    const response = await fetch(`${API_URL}/api/knowledge/search/${encodeURIComponent(query)}`);
+                    const data = await apiFetch(`${API_URL}/api/knowledge/search/${encodeURIComponent(query)}`);
                     const data = await response.json();
                     const list = document.getElementById('knowledgeList');
                 if (data.results.length === 0) {
@@ -2612,8 +2715,7 @@
                 const url = category 
                     ? `${API_URL}/api/points?category=${encodeURIComponent(category)}`
                     : `${API_URL}/api/points`;
-                const response = await fetch(url);
-                const data = await response.json();
+                const data = await apiFetch(url);
                 
                 const list = document.getElementById('pointsList');
                 if (!data.points || data.points.length === 0) {
@@ -2720,14 +2822,12 @@
                     : `${API_URL}/api/points`;
                 const method = editingPointId ? 'PUT' : 'POST';
                 
-                const response = await fetch(url, {
+                const response = await apiFetch(url, {
                     method,
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(pointData)
                 });
                 
-                const data = await response.json();
-                if (data.id || data.success) {
+                if (response.id || response.success) {
                     closePointModal();
                     // 如果在变量管理界面，刷新变量列表
                     if (currentProgramId) {
@@ -2744,8 +2844,7 @@
         
         async function editPoint(pointId) {
             try {
-                const response = await fetch(`${API_URL}/api/points/${pointId}`);
-                const point = await response.json();
+                const point = await apiFetch(`${API_URL}/api/points/${pointId}`);
                 showPointModal(point);
             } catch (error) {
                 alert('获取点位信息失败: ' + error);
@@ -2756,8 +2855,7 @@
             if (!confirm('确定要删除这个点位吗？')) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/points/${pointId}`, { method: 'DELETE' });
-                const data = await response.json();
+                const data = await apiFetch(`${API_URL}/api/points/${pointId}`, { method: 'DELETE' });
                 if (data.success || data.message) {
                     // 如果在变量管理界面，刷新变量列表
                     if (currentProgramId) {

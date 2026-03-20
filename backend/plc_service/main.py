@@ -15,7 +15,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv(Path(__file__).parent / ".env")
 
-from .database import init_db, get_db, save_batch_monitor_data, create_alarm_event, get_monitored_addresses, get_monitored_points_config, get_enabled_alarm_rules, create_alarm_log
+from .database import init_db, get_db, save_batch_monitor_data, cleanup_old_monitor_data, create_alarm_event, get_monitored_addresses, get_monitored_points_config, get_enabled_alarm_rules, create_alarm_log
 from .plc_client import PLCClient
 from .routes import plc, alarms, ai, points, devices, history, knowledge
 from .routes import program_routes
@@ -50,13 +50,23 @@ WS_PING_INTERVAL = 30.0  # 心跳间隔（秒）
 
 # 数据保存配置
 DATA_SAVE_INTERVAL = int(os.getenv("DATA_SAVE_INTERVAL", "60"))  # 每N次推送保存一次历史数据
+DATA_RETENTION_DAYS = int(os.getenv("DATA_RETENTION_DAYS", "30"))  # 历史数据保留天数
+
+# 认证配置
+AUTH_TOKEN = os.getenv("AUTH_TOKEN", "")  # Bearer Token，为空则不启用认证
+
+# CORS 配置
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
 # ==================================
 
 # 静态文件目录
 STATIC_DIR = Path(__file__).parent / "static"
 
 # 全局 PLC 客户端
-plc_client = PLCClient()
+PLC_IP = os.getenv("PLC_IP", "192.168.2.1")
+PLC_RACK = int(os.getenv("PLC_RACK", "0"))
+PLC_SLOT = int(os.getenv("PLC_SLOT", "1"))
+plc_client = PLCClient(ip=PLC_IP, rack=PLC_RACK, slot=PLC_SLOT)
 
 # 注入 PLC 客户端到路由模块（避免循环导入）
 plc_routes = None
@@ -77,7 +87,6 @@ if not all([FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_RECEIVE_ID]):
     logger.warning("飞书配置不完整，请检查 .env 文件")
 
 # 系统控制标志和状态锁
-monitoring_enabled = False  # 监控启用状态（默认关闭，用户需要点击启动按钮）
 system_manually_stopped = False  # 系统是否手动停止（控制飞书通知）
 
 # 连接状态追踪
@@ -318,20 +327,11 @@ def get_monitored_points_info():
 # PLC 连接状态监控任务
 async def connection_monitor():
     """监控 PLC 连接状态，检测断连并触发告警"""
-    global last_connection_state, connection_alarm_sent, monitoring_enabled
+    global last_connection_state, connection_alarm_sent
 
     try:
         while True:
             try:
-                # 检查监控是否启用
-                async with _state_lock:
-                    is_monitoring = monitoring_enabled
-
-                if not is_monitoring:
-                    # 监控未启用，等待后继续检查
-                    await asyncio.sleep(CONNECTION_MONITOR_INTERVAL)
-                    continue
-
                 current_state = plc_client.is_connected()
 
                 # 使用锁保护状态读取和更新
@@ -456,16 +456,30 @@ async def data_pusher():
                             for point_name, point_data in data.get('points', {}).items():
                                 if point_data.get('success'):
                                     cfg = address_to_config.get(point_name, {})
+                                    raw_value = point_data.get('raw_value', 0)
+                                    # 工程量换算：仅对模拟量（word/int 类型和 analog_in/analog_out 分类）进行
+                                    scaled_value = None
+                                    data_type = cfg.get('data_type', 'bit')
+                                    category = cfg.get('category', 'input')
+                                    if data_type in ('word', 'int', 'real') or category in ('analog_in', 'analog_out'):
+                                        scale_low = cfg.get('scale_low', 0)
+                                        scale_high = cfg.get('scale_high', 27648)
+                                        if scale_high != 0:
+                                            scaled_value = scale_low + (raw_value / scale_high) * (scale_high - scale_low)
+                                            scaled_value = round(scaled_value, 2)
                                     data_list.append({
                                         'address': point_name,
                                         'name': cfg.get('name', point_name),
                                         'value': point_data.get('value'),
-                                        'raw_value': point_data.get('raw_value'),
+                                        'raw_value': raw_value,
+                                        'scaled_value': scaled_value,
+                                        'scale_low': cfg.get('scale_low', 0),
+                                        'scale_high': cfg.get('scale_high', 27648),
                                         'type': point_data.get('type'),
-                                        'category': cfg.get('category', 'input'),
+                                        'category': category,
                                         'unit': cfg.get('unit', ''),
                                         'description': cfg.get('description', ''),
-                                        'data_type': cfg.get('data_type', 'bit')
+                                        'data_type': data_type
                                     })
 
                             message = {
@@ -477,9 +491,9 @@ async def data_pusher():
                             }
                             await manager.broadcast(message)
 
-                            # 每10秒存储一次历史数据
+                            # 按配置间隔存储历史数据
                             save_counter += 1
-                            if save_counter >= 10:
+                            if save_counter >= DATA_SAVE_INTERVAL:
                                 save_counter = 0
                                 try:
                                     history_data = []
@@ -591,6 +605,14 @@ async def lifespan(app: FastAPI):
     logger.info("PLC Control Service starting...")
     logger.info("Database initialized")
 
+    # 启动时清理过期历史数据
+    try:
+        deleted = await asyncio.to_thread(cleanup_old_monitor_data, DATA_RETENTION_DAYS)
+        if deleted > 0:
+            logger.info(f"清理过期历史数据: 删除 {deleted} 条 (保留 {DATA_RETENTION_DAYS} 天)")
+    except Exception as e:
+        logger.error(f"历史数据清理失败: {e}")
+
     # 启动后台任务
     background_tasks = [
         asyncio.create_task(data_pusher()),
@@ -624,23 +646,50 @@ app = FastAPI(
 )
 
 # CORS 配置
+_cors_origins = CORS_ORIGINS.split(",") if CORS_ORIGINS != "*" else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ============ 认证 ============
+async def verify_token(request: Request):
+    """验证 Bearer Token（AUTH_TOKEN 为空时不启用认证）"""
+    if not AUTH_TOKEN:
+        return
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        if token == AUTH_TOKEN:
+            return
+    raise HTTPException(status_code=401, detail="认证失败")
+
+
+def auth_dependency():
+    """返回认证依赖（仅在 AUTH_TOKEN 配置时生效）"""
+    if AUTH_TOKEN:
+        return Depends(verify_token)
+    # 无 token 配置时，返回空依赖
+    async def _no_auth():
+        pass
+    return Depends(_no_auth)
+
+
+_auth = auth_dependency()
+
+
 # 注册路由
-app.include_router(plc.router, prefix="/api/plc", tags=["PLC"])
-app.include_router(alarms.router, prefix="/api/alarms", tags=["Alarms"])
-app.include_router(ai.router, prefix="/api/ai", tags=["AI"])
-app.include_router(points.router, prefix="/api/points", tags=["Points"])
-app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
-app.include_router(history.router, prefix="/api/data", tags=["History"])
-app.include_router(knowledge.router, prefix="/api/knowledge", tags=["Knowledge"])
-app.include_router(program_routes.router, prefix="/api/programs", tags=["Program"])
+app.include_router(plc.router, prefix="/api/plc", tags=["PLC"], dependencies=[_auth])
+app.include_router(alarms.router, prefix="/api/alarms", tags=["Alarms"], dependencies=[_auth])
+app.include_router(ai.router, prefix="/api/ai", tags=["AI"], dependencies=[_auth])
+app.include_router(points.router, prefix="/api/points", tags=["Points"], dependencies=[_auth])
+app.include_router(devices.router, prefix="/api/devices", tags=["Devices"], dependencies=[_auth])
+app.include_router(history.router, prefix="/api/data", tags=["History"], dependencies=[_auth])
+app.include_router(knowledge.router, prefix="/api/knowledge", tags=["Knowledge"], dependencies=[_auth])
+app.include_router(program_routes.router, prefix="/api/programs", tags=["Program"], dependencies=[_auth])
 
 
 @app.get("/")
@@ -664,7 +713,18 @@ async def health():
     return {"status": "healthy", "plc_connected": plc_client._connected}
 
 
-@app.post("/api/test/feishu")
+@app.post("/api/auth/verify")
+async def verify_auth(request: Request):
+    """验证 Token 是否正确"""
+    if not AUTH_TOKEN:
+        return {"authenticated": True, "auth_enabled": False}
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer ") and auth[7:] == AUTH_TOKEN:
+        return {"authenticated": True, "auth_enabled": True}
+    raise HTTPException(status_code=401, detail="认证失败")
+
+
+@app.post("/api/test/feishu", dependencies=[_auth])
 async def test_feishu_notification():
     """测试飞书通知"""
     result = await send_feishu_notification(
@@ -674,7 +734,7 @@ async def test_feishu_notification():
     return {"success": result, "message": "飞书通知已发送" if result else "飞书通知发送失败"}
 
 
-@app.post("/api/system/stop")
+@app.post("/api/system/stop", dependencies=[_auth])
 async def system_stop():
     """标记系统手动停止，禁用飞书通知"""
     global system_manually_stopped
@@ -684,7 +744,7 @@ async def system_stop():
     return {"success": True, "message": "系统已停止，不会发送断连通知"}
 
 
-@app.post("/api/system/start")
+@app.post("/api/system/start", dependencies=[_auth])
 async def system_start():
     """标记系统启动，恢复飞书通知"""
     global system_manually_stopped
