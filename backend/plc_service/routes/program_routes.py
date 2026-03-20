@@ -17,7 +17,7 @@ sys.path.insert(0, '/home/pi/envs/plc_env/lib/python3.11/site-packages')
 from ..stl_parser import STLParser
 import sqlite3
 import asyncio
-from ..database import DB_PATH  # 使用统一的数据库路径
+from ..database import DB_PATH, run_db  # 使用统一的数据库路径
 from ..logger import get_logger
 
 router = APIRouter(tags=["Program"])
@@ -245,11 +245,6 @@ def get_data_type_from_var(var_type: str) -> str:
         'COUNTER': 'counter',
     }
     return type_map.get(var_type.upper(), 'word')
-
-
-async def run_db(func):
-    """在线程池中运行同步数据库操作"""
-    return await asyncio.to_thread(func)
 
 
 class ImportVariablesRequest(BaseModel):

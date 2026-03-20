@@ -3,7 +3,7 @@ PLC 操作路由 - 只读模式（安全保护）
 写入功能已被移除，系统只能读取PLC数据，禁止任何写入操作
 """
 from fastapi import APIRouter, HTTPException
-from ..database import DEFAULT_POINTS  # 使用统一的默认点位定义
+from ..database import DEFAULT_POINTS, get_db  # 使用统一的默认点位定义
 from ..logger import get_logger
 
 router = APIRouter()
@@ -68,11 +68,30 @@ async def read_point(point: str):
                 'success': True
             }
         else:
-            # 字数据（模拟量）
+            # 字数据（模拟量）- 查询换算参数
+            scaled_value = None
+            scale_low = 0
+            scale_high = 27648
+            try:
+                with get_db() as db:
+                    cursor = db.execute(
+                        "SELECT scale_low, scale_high FROM points WHERE address = ? AND enabled = 1",
+                        (point,)
+                    )
+                    row = cursor.fetchone()
+                    if row and row['scale_high'] != 0:
+                        scale_low = row['scale_low']
+                        scale_high = row['scale_high']
+                        scaled_value = round(scale_low + (value / scale_high) * (scale_high - scale_low), 2)
+            except Exception:
+                pass  # 查询失败不影响原始值返回
             return {
                 'point': point,
                 'value': value,
                 'raw_value': value,
+                'scaled_value': scaled_value,
+                'scale_low': scale_low,
+                'scale_high': scale_high,
                 'type': 'analog',
                 'success': True
             }

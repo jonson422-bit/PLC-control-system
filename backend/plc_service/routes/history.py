@@ -2,17 +2,14 @@
 历史数据路由
 """
 from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
 from datetime import datetime, timedelta
 from typing import Optional
-import asyncio
-from ..database import get_db
+import csv
+import io
+from ..database import get_db, run_db
 
 router = APIRouter()
-
-
-async def run_db(func):
-    """在线程池中运行同步数据库操作"""
-    return await asyncio.to_thread(func)
 
 
 @router.get("/point/{point}")
@@ -188,3 +185,54 @@ async def clear_old_data(
         'deleted_count': deleted_count,
         'message': f'已删除 {days} 天前的 {deleted_count} 条历史数据'
     }
+
+
+@router.get("/export")
+async def export_history_csv(
+    point: str = Query(..., description="点位名称/地址"),
+    hours: int = Query(24, ge=1, le=720, description="导出时长（小时）")
+):
+    """导出点位历史数据为 CSV（流式响应）"""
+    start_time = datetime.now() - timedelta(hours=hours)
+
+    def _query():
+        with get_db() as db:
+            cursor = db.execute("""
+                SELECT point_name, value, raw_value, quality, timestamp
+                FROM monitor_data
+                WHERE point_name = ?
+                AND timestamp >= ?
+                ORDER BY timestamp ASC
+            """, (point, start_time.isoformat()))
+            return cursor.fetchall()
+
+    rows = await run_db(_query)
+
+    def generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        # 写入 BOM 和表头
+        yield '\ufeff'
+        writer.writerow(['timestamp', 'point', 'value', 'raw_value', 'quality'])
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate(0)
+
+        for row in rows:
+            writer.writerow([
+                row['timestamp'],
+                row['point_name'],
+                row['value'],
+                row['raw_value'],
+                row['quality']
+            ])
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate(0)
+
+    filename = f"{point}_{hours}h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

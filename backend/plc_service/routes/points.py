@@ -5,8 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 import sqlite3
-import asyncio
-from ..database import get_db, DB_PATH
+from ..database import get_db, run_db, DB_PATH
 from ..logger import get_logger
 
 router = APIRouter()
@@ -45,11 +44,6 @@ class PointUpdate(BaseModel):
     group_name: Optional[str] = None
     enabled: Optional[bool] = None
     log_history: Optional[bool] = None
-
-
-async def run_db(func):
-    """在线程池中运行同步数据库操作"""
-    return await asyncio.to_thread(func)
 
 
 @router.get("")

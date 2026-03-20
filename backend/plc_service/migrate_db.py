@@ -15,7 +15,7 @@ def migrate():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 1. PLC程序表
+    # 1. PLC程序表 — 使用中 (programs.json + 路由 /api/programs/)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS plc_programs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +31,7 @@ def migrate():
         )
     """)
 
-    # 2. 变量表（从STL解析出的变量）
+    # 2. 变量表（从STL解析出的变量）— 使用中 (routes/program_routes.py)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS program_variables (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +49,7 @@ def migrate():
         )
     """)
 
-    # 3. 监控变量配置表
+    # 3. 监控变量配置表 — 未使用 (已被 monitor_config 表取代，保留以防回退)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS monitored_variables (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,7 +93,7 @@ def migrate():
             else:
                 print(f"添加字段 {field_name} 时出错: {e}")
 
-    # 6. 添加系统配置表
+    # 6. 系统配置表 — 未使用 (配置已迁移到 .env 文件，表保留备用)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS system_config (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,7 +120,7 @@ def migrate():
             VALUES (?, ?, ?)
         """, (key, value, desc))
 
-    # 7. 添加操作日志表
+    # 7. 操作日志表 — 未使用 (表已创建，功能待实现)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operation_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -4,8 +4,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-import asyncio
-from ..database import get_db
+from ..database import get_db, run_db
 from ..logger import get_logger
 
 router = APIRouter()
@@ -19,11 +18,6 @@ class DeviceConfig(BaseModel):
     rack: int = 0
     slot: int = 1
     enabled: bool = True
-
-
-async def run_db(func):
-    """在线程池中运行同步数据库操作"""
-    return await asyncio.to_thread(func)
 
 
 @router.get("")

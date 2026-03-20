@@ -3,6 +3,7 @@
 """
 import sqlite3
 import json
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -201,6 +202,11 @@ def get_db():
         conn.close()
 
 
+async def run_db(func):
+    """在线程池中运行同步数据库操作，避免阻塞事件循环"""
+    return await asyncio.to_thread(func)
+
+
 # 点位操作
 def get_all_points() -> List[Dict]:
     with get_db() as db:
@@ -336,6 +342,17 @@ def save_batch_monitor_data(data_list: list):
                 VALUES (?, ?, ?, ?)
             """, (item['point'], item['value'], item['raw_value'], item.get('quality', 'good')))
         db.commit()
+
+
+def cleanup_old_monitor_data(days: int = 30):
+    """清理指定天数前的历史监控数据"""
+    with get_db() as db:
+        cursor = db.execute(
+            "DELETE FROM monitor_data WHERE timestamp < datetime('now', ?)",
+            (f'-{days} days',)
+        )
+        db.commit()
+        return cursor.rowcount
 
 
 def get_history_data(point_name: str, hours: int = 24) -> List[Dict]:
