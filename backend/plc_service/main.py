@@ -90,7 +90,7 @@ if not all([FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_RECEIVE_ID]):
 system_manually_stopped = False  # 系统是否手动停止（控制飞书通知）
 
 # 连接状态追踪
-last_connection_state = True  # 上一次的连接状态
+last_connection_state = None  # 上一次的连接状态（None 表示尚未建立过连接，不触发断连告警）
 connection_alarm_sent = False  # 是否已发送断连告警
 
 # 状态锁 - 保护全局状态的并发访问
