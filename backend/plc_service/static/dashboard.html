@@ -2817,7 +2817,6 @@
             knowledgeSearchTimer = setTimeout(async () => {
                 try {
                     const data = await apiFetch(`${API_URL}/api/knowledge/search/${encodeURIComponent(query)}`);
-                    const data = await response.json();
                     const list = document.getElementById('knowledgeList');
                 if (data.results.length === 0) {
                     list.innerHTML = '<p style="color:#888;text-align:center;padding:40px;">未找到匹配的知识</p>';
