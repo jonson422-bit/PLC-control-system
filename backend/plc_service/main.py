@@ -327,7 +327,7 @@ def get_monitored_points_info():
 # PLC 连接状态监控任务
 async def connection_monitor():
     """监控 PLC 连接状态，检测断连并触发告警"""
-    global last_connection_state, connection_alarm_sent
+    global last_connection_state, connection_alarm_sent, system_manually_stopped
 
     try:
         while True:
