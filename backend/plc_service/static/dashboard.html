@@ -148,6 +148,54 @@
             background-clip: text;
         }
         .analog-unit { font-size: 14px; color: #888; margin-top: 5px; }
+        .sparkline-container {
+            margin-top: 8px;
+            width: 100%;
+            height: 32px;
+            overflow: hidden;
+        }
+        .sparkline-container svg { width: 100%; height: 100%; }
+
+        /* 告警 Toast 通知 */
+        .alarm-toast-container {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 380px;
+            pointer-events: none;
+        }
+        .alarm-toast {
+            pointer-events: auto;
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            animation: alarmToastIn 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .alarm-toast.info { background: #0f3460; border-left: 4px solid #00d9ff; }
+        .alarm-toast.warning { background: #3d2e00; border-left: 4px solid #ffc107; }
+        .alarm-toast.critical { background: #3d0000; border-left: 4px solid #ff4757; }
+        .alarm-toast-close {
+            background: none; border: none; color: #aaa; cursor: pointer;
+            font-size: 16px; padding: 0 4px; line-height: 1;
+        }
+        @keyframes alarmToastIn {
+            from { opacity: 0; transform: translateX(40px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .alarm-badge {
+            background: #ff4757; color: #fff; font-size: 11px; font-weight: bold;
+            padding: 1px 6px; border-radius: 10px; margin-left: 6px; display: none;
+        }
         
         .control-panel {
             display: grid;
@@ -331,6 +379,21 @@
             gap: 8px;
         }
         .checkbox-group input { width: auto; }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr !important; }
+            .analog-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+            .point-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+            .nav-tabs {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .nav-tabs::-webkit-scrollbar { display: none; }
+            .nav-tab { white-space: nowrap; min-width: max-content; padding: 8px 14px; font-size: 13px; }
+            .analog-value { font-size: 28px; }
+            .card { padding: 12px; }
+            button, .btn { min-height: 44px; }
+        }
     </style>
 </head>
 <body>
@@ -351,7 +414,7 @@
             <button class="nav-tab active" onclick="showTab('monitor', this)">实时监控</button>
             <button class="nav-tab" onclick="showTab('history', this)">历史数据</button>
             <button class="nav-tab" onclick="showTab('variables', this)">变量管理</button>
-            <button class="nav-tab" onclick="showTab('alarms', this)">告警管理</button>
+            <button class="nav-tab" onclick="showTab('alarms', this)">告警管理<span class="alarm-badge" id="alarmBadge">0</span></button>
             <button class="nav-tab" onclick="showTab('devices', this)">设备管理</button>
             <button class="nav-tab" onclick="showTab('knowledge', this)">知识诊断</button>
         </div>
@@ -822,6 +885,7 @@
             </form>
         </div>
     </div>
+    <div class="alarm-toast-container" id="alarmToastContainer"></div>
     <script>
         const API_URL = window.location.origin;
         let ws = null;
@@ -907,6 +971,66 @@
         }
 
         // ============ 工具函数 ============
+        // Sparkline 数据缓冲区 { address: ringBuffer }
+        const SPARKLINE_MAX_POINTS = 60;
+        let sparklineData = {};
+
+        function sparklinePush(address, value) {
+            if (!sparklineData[address]) {
+                sparklineData[address] = [];
+            }
+            sparklineData[address].push(value);
+            if (sparklineData[address].length > SPARKLINE_MAX_POINTS) {
+                sparklineData[address].shift();
+            }
+        }
+
+        function sparklineSVG(data, color = '#00d9ff') {
+            if (!data || data.length < 2) return '';
+            const w = 160, h = 30, pad = 1;
+            const min = Math.min(...data), max = Math.max(...data);
+            const range = max - min || 1;
+            const points = data.map((v, i) => {
+                const x = pad + (i / (data.length - 1)) * (w - 2 * pad);
+                const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+            });
+            return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
+                `<polyline fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" points="${points.join(' ')}"/>` +
+                `</svg>`;
+        }
+
+        // 告警 Toast
+        let alarmToastCount = 0;
+        function showAlarmToast(data) {
+            const container = document.getElementById('alarmToastContainer');
+            if (!container) return;
+            const severity = data.severity || 'info';
+            const title = data.rule_name || '告警';
+            const msg = `${data.point}: ${data.value} - ${data.message || ''}`;
+            const el = document.createElement('div');
+            el.className = `alarm-toast ${severity}`;
+            el.innerHTML = `<div style="flex:1;"><strong>${title}</strong><br><span style="opacity:0.8;">${msg}</span></div>` +
+                `<button class="alarm-toast-close" onclick="this.parentElement.remove()">&times;</button>`;
+            container.appendChild(el);
+            // 最多显示5条
+            while (container.children.length > 5) container.removeChild(container.firstChild);
+            // 自动消失
+            setTimeout(() => { if (el.parentElement) el.remove(); }, 8000);
+            // 更新徽标
+            alarmToastCount++;
+            const badge = document.getElementById('alarmBadge');
+            if (badge) { badge.style.display = 'inline'; badge.textContent = alarmToastCount; }
+            // 浏览器通知
+            if (Notification.permission === 'granted' && document.hidden) {
+                new Notification(title, { body: msg });
+            }
+        }
+
+        // 请求浏览器通知权限
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
         // HTML 转义，防止 XSS
         function escapeHtml(str) {
             if (str == null) return '';
@@ -1010,8 +1134,8 @@
                             updateStatus(true, 'RUN');
                         }
                     }
-                    // 显示告警 toast
-                    showToast(data.message, data.severity);
+                    // 显示告警 toast 通知
+                    showAlarmToast(data);
                     break;
                     
                 case 'pong':
@@ -1320,10 +1444,12 @@
                 const div = document.createElement('div');
                 div.className = 'analog-item';
                 div.dataset.key = key;
+                const existingData = sparklineData[key] || [];
                 div.innerHTML = `
                     <div class="point-name" title="${p.description || ''}">${displayName}</div>
                     <div class="analog-value">${displayValue}${unit}</div>
                     <div class="analog-unit">原始值: ${raw}</div>
+                    <div class="sparkline-container" id="spark-${key}">${sparklineSVG(existingData)}</div>
                 `;
                 return div;
             } else {
@@ -1348,7 +1474,13 @@
                 const scaled = p.scaled_value;
                 const displayValue = (scaled != null) ? scaled : raw;
                 const unit = p.unit || '';
-                
+                const key = p.address || p.name;
+
+                // 更新 sparkline 数据
+                sparklinePush(key, raw);
+                const sparkEl = element.querySelector('.sparkline-container');
+                if (sparkEl) sparkEl.innerHTML = sparklineSVG(sparklineData[key]);
+
                 const valueEl = element.querySelector('.analog-value');
                 const unitEl = element.querySelector('.analog-unit');
                 if (valueEl) valueEl.textContent = `${displayValue}${unit}`;
@@ -2132,7 +2264,13 @@
             // 防抖：快速切换时只执行最后一次加载
             if (tabLoadTimers[tab]) clearTimeout(tabLoadTimers[tab]);
             tabLoadTimers[tab] = setTimeout(() => {
-                if (tab === 'alarms') { loadAlarms(); loadAlarmRules(); }
+                if (tab === 'alarms') {
+                    loadAlarms(); loadAlarmRules();
+                    // 重置告警徽标
+                    alarmToastCount = 0;
+                    const badge = document.getElementById('alarmBadge');
+                    if (badge) badge.style.display = 'none';
+                }
                 if (tab === 'variables') loadProgramList();
                 if (tab === 'devices') loadDevices();
                 if (tab === 'knowledge') loadKnowledge();
