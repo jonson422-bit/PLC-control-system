@@ -179,12 +179,15 @@ async def search_knowledge(query: str):
 @router.post("/upload")
 async def upload_knowledge_file(file: UploadFile = File(...)):
     """上传知识库文件（JSON/Markdown）"""
+    MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
     filename = file.filename.lower()
 
     if not (filename.endswith('.json') or filename.endswith('.md')):
         raise HTTPException(status_code=400, detail="仅支持 JSON 和 Markdown 文件")
 
     content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="文件大小超过 10MB 限制")
 
     try:
         if filename.endswith('.json'):

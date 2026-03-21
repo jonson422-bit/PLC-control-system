@@ -926,6 +926,19 @@
         const RECONNECT_BASE_DELAY = 3000;
         let authToken = localStorage.getItem('plc_auth_token') || '';
 
+        // 全局点位分类常量
+        const CATEGORY_LABELS = {
+            'input': '数字量输入', 'output': '数字量输出',
+            'analog_in': '模拟量输入', 'analog_out': '模拟量输出', 'memory': '内存区'
+        };
+        const CATEGORY_COLORS = {
+            'input': '#00d9ff', 'output': '#00ff88',
+            'analog_in': '#ffc107', 'analog_out': '#ff6b6b', 'memory': '#a55eea'
+        };
+        const CAT_LABEL = (c) => CATEGORY_LABELS[c] || c;
+        const CAT_COLOR = (c) => CATEGORY_COLORS[c] || '#888';
+        const LOADING_HTML = '<div style="text-align:center;padding:30px;color:#555;">加载中...</div>';
+
         // ============ 认证 ============
         function getAuthHeaders() {
             const headers = {};
@@ -2131,23 +2144,7 @@
                 listEl.innerHTML = '<p style="color:#888;text-align:center;padding:40px;">没有符合条件的变量</p>';
                 return;
             }
-            
-            const categoryColors = {
-                'input': '#00d9ff',
-                'output': '#00ff88',
-                'analog_in': '#ffc107',
-                'analog_out': '#ff6b6b',
-                'memory': '#a55eea'
-            };
-            
-            const categoryLabels = {
-                'input': '数字量输入',
-                'output': '数字量输出',
-                'analog_in': '模拟量输入',
-                'analog_out': '模拟量输出',
-                'memory': '内存区'
-            };
-            
+
             listEl.innerHTML = `<table style="width:100%;border-collapse:collapse;">
                 <thead>
                     <tr style="border-bottom:1px solid #333;">
@@ -2165,8 +2162,8 @@
                 <tbody>
                     ${filtered.map((v, idx) => {
                         const cat = getAddressCategory(v.address);
-                        const catColor = categoryColors[cat] || '#888';
-                        const catLabel = categoryLabels[cat] || cat;
+                        const catColor = CAT_COLOR(cat);
+                        const catLabel = CAT_LABEL(cat);
                         const originalIdx = allVariables.indexOf(v);
                         const isMonitored = monitoredPointIds.includes(v.point_id);
                         
@@ -2509,10 +2506,10 @@
             const hours = document.getElementById('historyHours').value;
             
             if (!point) {
-                alert('请选择变量点位');
+                showToast('请选择变量点位', 'warning');
                 return;
             }
-            
+
             try {
                 const data = await apiFetch(`${API_URL}/api/data/point/${encodeURIComponent(point)}?hours=${hours}`);
                 
@@ -2665,12 +2662,15 @@
         async function loadStatistics() {
             const point = document.getElementById('statsPointSelect').value;
             const hours = document.getElementById('statsHours').value;
-            
+            const statsContainer = document.getElementById('statisticsContainer');
+
             if (!point) {
-                alert('请选择变量点位');
+                showToast('请选择变量点位', 'warning');
                 return;
             }
-            
+
+            statsContainer.innerHTML = LOADING_HTML;
+
             try {
                 const data = await apiFetch(`${API_URL}/api/data/statistics/${encodeURIComponent(point)}?hours=${hours}`);
                 
@@ -2702,9 +2702,9 @@
         let editingDeviceId = null;
         
         async function loadDevices() {
+            const list = document.getElementById('devicesList');
+            list.innerHTML = LOADING_HTML;
             try {
-                const data = await apiFetch(`${API_URL}/api/devices`);
-                const list = document.getElementById('devicesList');
                 
                 if (data.devices.length === 0) {
                     list.innerHTML = '<p style="color:#888;text-align:center;padding:40px;">暂无设备，点击上方按钮添加</p>';
@@ -2824,6 +2824,8 @@
         let editingKnowledgeId = null;
         
         async function loadKnowledge() {
+            const list = document.getElementById('knowledgeList');
+            list.innerHTML = LOADING_HTML;
             try {
                 const category = document.getElementById('knowledgeCategory').value;
                 const url = category 
@@ -2878,9 +2880,25 @@
         async function viewKnowledge(id) {
             try {
                 const item = await apiFetch(`${API_URL}/api/knowledge/${id}`);
-                alert(`【${item.title}】\n\n分类: ${item.category}\n\n${item.content}\n\n关键词: ${item.keywords?.join(', ') || '无'}\n关联点位: ${item.related_points?.join(', ') || '无'}`);
+                const modal = document.createElement('div');
+                modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000;';
+                modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+                modal.innerHTML = `
+                    <div style="background:#16213e;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;border:1px solid #2d2d44;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                            <h2 style="margin:0;font-size:18px;">${item.title}</h2>
+                            <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;">&times;</button>
+                        </div>
+                        <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                            <span style="background:#0f3460;padding:3px 10px;border-radius:4px;font-size:12px;color:#00d9ff;">${item.category || 'general'}</span>
+                            ${item.keywords?.length ? item.keywords.map(k => `<span style="background:#1a2a4a;padding:3px 8px;border-radius:4px;font-size:11px;color:#aaa;">${k}</span>`).join('') : ''}
+                        </div>
+                        <pre style="white-space:pre-wrap;font-family:inherit;font-size:14px;color:#ddd;line-height:1.7;margin:0;background:#0a0f1a;padding:16px;border-radius:8px;">${item.content}</pre>
+                        ${item.related_points?.length ? `<div style="margin-top:12px;font-size:12px;color:#666;">关联点位: ${item.related_points.join(', ')}</div>` : ''}
+                    </div>`;
+                document.body.appendChild(modal);
             } catch (error) {
-                alert('获取详情失败: ' + error);
+                showToast('获取详情失败: ' + error, 'error');
             }
         }
         
@@ -3029,6 +3047,8 @@
         let editingPointId = null;
         
         async function loadPoints() {
+            const list = document.getElementById('pointsList');
+            list.innerHTML = LOADING_HTML;
             try {
                 const category = document.getElementById('pointCategory').value;
                 const url = category 
@@ -3041,31 +3061,17 @@
                     list.innerHTML = '<p style="color:#888;text-align:center;padding:40px;">暂无点位配置，点击上方按钮添加</p>';
                     return;
                 }
-                
-                const categoryLabels = {
-                    'input': '数字量输入',
-                    'output': '数字量输出',
-                    'analog_in': '模拟量输入',
-                    'analog_out': '模拟量输出',
-                    'memory': '内存区'
-                };
-                
-                const categoryColors = {
-                    'input': '#00d9ff',
-                    'output': '#00ff88',
-                    'analog_in': '#ffc107',
-                    'analog_out': '#ff6b6b',
-                    'memory': '#a55eea'
-                };
+
+
                 
                 list.innerHTML = data.points.map(point => `
-                    <div style="background:#0f3460;border-radius:8px;padding:15px;margin-bottom:10px;border-left:4px solid ${categoryColors[point.category] || '#00d9ff'};">
+                    <div style="background:#0f3460;border-radius:8px;padding:15px;margin-bottom:10px;border-left:4px solid ${CAT_COLOR(point.category)};">
                         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
                             <div style="flex:1;min-width:200px;">
                                 <div style="display:flex;gap:10px;align-items:center;margin-bottom:5px;">
-                                    <span style="font-family:monospace;font-size:16px;font-weight:bold;color:${categoryColors[point.category] || '#00d9ff'};">${point.address}</span>
+                                    <span style="font-family:monospace;font-size:16px;font-weight:bold;color:${CAT_COLOR(point.category)};">${point.address}</span>
                                     <span style="color:#eee;font-weight:500;">${point.name || '未命名'}</span>
-                                    <span style="background:#16213e;padding:2px 8px;border-radius:4px;font-size:11px;color:#888;">${categoryLabels[point.category] || point.category}</span>
+                                    <span style="background:#16213e;padding:2px 8px;border-radius:4px;font-size:11px;color:#888;">${CAT_LABEL(point.category)}</span>
                                     ${point.enabled ? '' : '<span style="color:#ff4757;font-size:11px;">[禁用]</span>'}
                                 </div>
                                 <div style="font-size:12px;color:#888;">

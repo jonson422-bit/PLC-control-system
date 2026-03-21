@@ -68,12 +68,15 @@ async def list_programs():
 @router.post("/upload")
 async def upload_program(file: UploadFile = File(...)):
     """上传并解析STL程序"""
+    MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="文件大小超过 10MB 限制")
+
     # 检查文件类型
     if not file.filename.lower().endswith(('.stl', '.awl')):
         raise HTTPException(status_code=400, detail="只支持 .stl 或 .awl 文件")
 
-    # 读取文件内容
-    content = await file.read()
     try:
         text_content = content.decode('utf-8')
     except UnicodeDecodeError:

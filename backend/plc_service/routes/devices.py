@@ -2,9 +2,10 @@
 设备管理路由
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 import asyncio
+import ipaddress
 from ..database import get_db, run_db
 from ..logger import get_logger
 
@@ -19,6 +20,15 @@ class DeviceConfig(BaseModel):
     rack: int = 0
     slot: int = 1
     enabled: bool = True
+
+    @field_validator('ip_address')
+    @classmethod
+    def validate_ip(cls, v):
+        try:
+            ipaddress.ip_address(v)
+        except ValueError:
+            raise ValueError(f'无效的 IP 地址: {v}')
+        return v
 
 
 @router.get("")

@@ -2,8 +2,9 @@
 点位管理路由
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List
+import re
 import sqlite3
 from ..database import get_db, run_db, DB_PATH
 from ..logger import get_logger
@@ -26,6 +27,13 @@ class PointConfig(BaseModel):
     category: Optional[str] = "input"
     group_name: Optional[str] = None
     enabled: bool = True
+
+    @field_validator('address')
+    @classmethod
+    def validate_address(cls, v):
+        if not re.match(r'^(I|Q|M|DB|AIW|AQW|IW|QW|VW|MW|V)\d+(\.\d+)?$', v, re.IGNORECASE):
+            raise ValueError(f'无效的 PLC 地址格式: {v}')
+        return v
     log_history: Optional[bool] = False
 
 
