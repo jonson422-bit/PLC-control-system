@@ -54,6 +54,10 @@ class PLCClient:
         self._connected = False
         self._last_connect_attempt = 0
         self._reconnect_interval = 5  # 重连间隔（秒）
+        self._net_cache_time = 0
+        self._net_cache_ok = False
+        self._cpu_cache_time = 0
+        self._cpu_cache_state = 'DISCONNECTED'
         self._connect()
 
     def _connect(self):
@@ -113,40 +117,72 @@ class PLCClient:
                 logger.warning(f"PLC断开连接时出错: {e}")
             self.client = None
         self._connected = False
+        self._net_cache_time = 0    # 网络探测缓存时间戳
+        self._net_cache_ok = False   # 网络探测缓存结果
+        self._cpu_cache_time = 0    # CPU 状态缓存时间戳
+        self._cpu_cache_state = 'DISCONNECTED'
 
     def is_connected(self) -> bool:
-        """检查连接状态 - 通过实际尝试读取来验证"""
-        # 首先检查网络连通性
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            result = sock.connect_ex((self.ip, 102))
-            sock.close()
-            if result != 0:
+        """检查连接状态 - 带缓存的网络探测"""
+        import time
+        now = time.time()
+
+        # 网络探测缓存 10 秒
+        if now - self._net_cache_time < 10:
+            if not self._net_cache_ok:
+                return False
+        else:
+            # 更新缓存
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                try:
+                    sock.settimeout(1)
+                    result = sock.connect_ex((self.ip, 102))
+                finally:
+                    sock.close()
+                self._net_cache_ok = (result == 0)
+            except Exception as e:
+                logger.warning(f"PLC网络检查失败: {e}")
+                self._net_cache_ok = False
+            self._net_cache_time = now
+
+            if not self._net_cache_ok:
                 self._connected = False
                 return False
-        except Exception as e:
-            logger.warning(f"PLC网络检查失败: {e}")
-            self._connected = False
-            return False
-        
+
         # 检查客户端对象
         if self.client is None:
-            # 尝试自动重连
             self._connect()
             return self._connected
-        
-        # 真正验证连接是否有效 - 通过尝试获取CPU状态
+
         return self._check_connection()
 
-    def _check_connection(self):
-        """内部检查并更新连接状态"""
+    def get_cpu_state(self):
+        """获取 CPU 状态（带 30 秒缓存）"""
+        import time
+        now = time.time()
+        if now - self._cpu_cache_time < 30:
+            return self._cpu_cache_state
+        state = self._get_cpu_state_uncached()
+        self._cpu_cache_state = state
+        self._cpu_cache_time = now
+        return state
+
+    def _get_cpu_state_uncached(self):
+        """实际获取 CPU 状态"""
         try:
-            # 尝试获取CPU状态来验证连接
             if self.client:
-                self.client.get_cpu_state()
-                self._connected = True
-                return True
+                return self.client.get_cpu_state()
+        except Exception:
+            pass
+        return 'DISCONNECTED'
+
+    def _check_connection(self):
+        """内部检查并更新连接状态（使用缓存的 CPU 状态）"""
+        try:
+            state = self.get_cpu_state()
+            self._connected = state not in ('DISCONNECTED', '')
+            return self._connected
         except Exception as e:
             logger.warning(f"PLC连接检查失败: {e}")
         self._connected = False

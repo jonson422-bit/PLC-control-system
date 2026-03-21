@@ -74,6 +74,9 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_monitor_timestamp ON monitor_data(timestamp)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_monitor_point ON monitor_data(point_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_monitor_point_time ON monitor_data(point_name, timestamp)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_alarm_events_status ON alarm_events(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_alarm_events_created ON alarm_events(created_at)")
     
     # 告警规则表
     cursor.execute("""
@@ -335,12 +338,14 @@ def save_monitor_data(point_name: str, value: float, raw_value: int, quality: st
 
 def save_batch_monitor_data(data_list: list):
     """批量保存监控数据"""
+    if not data_list:
+        return
     with get_db() as db:
-        for item in data_list:
-            db.execute("""
-                INSERT INTO monitor_data (point_name, value, raw_value, quality)
-                VALUES (?, ?, ?, ?)
-            """, (item['point'], item['value'], item['raw_value'], item.get('quality', 'good')))
+        rows = [(item['point'], item['value'], item['raw_value'], item.get('quality', 'good')) for item in data_list]
+        db.executemany(
+            "INSERT INTO monitor_data (point_name, value, raw_value, quality) VALUES (?, ?, ?, ?)",
+            rows
+        )
         db.commit()
 
 

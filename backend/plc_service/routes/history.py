@@ -74,16 +74,17 @@ async def get_multi_history(
 
     def _query():
         with get_db() as db:
-            all_data = {}
-            for pt in point_list:
-                cursor = db.execute("""
-                    SELECT value, raw_value, timestamp
-                    FROM monitor_data
-                    WHERE point_name = ?
-                    AND timestamp >= ?
-                    ORDER BY timestamp ASC
-                """, (pt, start_time.isoformat()))
-                all_data[pt] = [dict(row) for row in cursor.fetchall()]
+            placeholders = ','.join(['?' for _ in point_list])
+            cursor = db.execute(f"""
+                SELECT point_name, value, raw_value, timestamp
+                FROM monitor_data
+                WHERE point_name IN ({placeholders}) AND timestamp >= ?
+                ORDER BY point_name, timestamp ASC
+            """, (*point_list, start_time.isoformat()))
+            all_data = {pt: [] for pt in point_list}
+            for row in cursor.fetchall():
+                r = dict(row)
+                all_data.setdefault(r['point_name'], []).append(r)
             return all_data
 
     all_rows = await run_db(_query)
