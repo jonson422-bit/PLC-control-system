@@ -4,6 +4,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+import asyncio
 from ..database import get_db, run_db
 from ..logger import get_logger
 

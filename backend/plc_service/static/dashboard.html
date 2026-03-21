@@ -1801,7 +1801,7 @@
                     closeAlarmRuleModal();
                     loadAlarmRules();
                 } else {
-                    alert('保存失败: ' + JSON.stringify(data));
+                    alert('保存失败: ' + JSON.stringify(response));
                 }
             } catch (error) {
                 alert('保存失败: ' + error);
@@ -1994,7 +1994,7 @@
                         showToast('PLC 参数已变更，正在尝试重连...', 'warning');
                     }
                 } else {
-                    showToast('保存失败: ' + JSON.stringify(data), 'error');
+                    showToast('保存失败: ' + JSON.stringify(response), 'error');
                 }
             } catch (e) {
                 showToast('保存失败: ' + e, 'error');
@@ -2468,30 +2468,24 @@
         let historyChart = null;
         
         async function loadHistoryPointOptions() {
-            // 从监控配置和点位列表加载可选变量
             try {
-                const [monitorRes, pointsRes] = await Promise.all([
-                    fetch(`${API_URL}/api/points/monitor/list`),
-                    fetch(`${API_URL}/api/points`)
+                const [monitorData, pointsData] = await Promise.all([
+                    apiFetch(`${API_URL}/api/points/monitor/list`),
+                    apiFetch(`${API_URL}/api/points`)
                 ]);
-                
-                const monitorData = await monitorRes.json();
-                const pointsData = await pointsRes.json();
-                
+
                 // 合并去重
                 const pointSet = new Set();
                 const options = [];
-                
-                // 先添加监控配置中的点位
-                monitorData.forEach(p => {
+
+                (monitorData || []).forEach(p => {
                     if (!pointSet.has(p.address)) {
                         pointSet.add(p.address);
                         options.push({ address: p.address, name: p.name || p.address });
                     }
                 });
-                
-                // 再添加所有点位
-                pointsData.points.forEach(p => {
+
+                (pointsData.points || []).forEach(p => {
                     if (!pointSet.has(p.address)) {
                         pointSet.add(p.address);
                         options.push({ address: p.address, name: p.name || p.address });
@@ -2781,7 +2775,7 @@
                     closeDeviceModal();
                     loadDevices();
                 } else {
-                    alert('保存失败: ' + JSON.stringify(data));
+                    alert('保存失败: ' + JSON.stringify(response));
                 }
             } catch (error) {
                 alert('保存失败: ' + error);
@@ -2945,7 +2939,7 @@
                     closeKnowledgeModal();
                     loadKnowledge();
                 } else {
-                    alert('保存失败: ' + JSON.stringify(data));
+                    alert('保存失败: ' + JSON.stringify(response));
                 }
             } catch (error) {
                 alert('保存失败: ' + error);
@@ -3158,7 +3152,7 @@
                     }
                     showToast('点位保存成功', 'success');
                 } else {
-                    alert('保存失败: ' + JSON.stringify(data));
+                    alert('保存失败: ' + JSON.stringify(response));
                 }
             } catch (error) {
                 alert('保存失败: ' + error);

@@ -123,7 +123,7 @@ async def update_config(req: ConfigUpdate):
             setattr(m, key, int(value))
 
     # 更新 .env 文件
-    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
     _update_env_file(env_path, key, value)
 
     # PLC 参数变更 → 重连
