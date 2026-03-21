@@ -60,7 +60,10 @@ async def get_config():
             # 隐藏 token，只显示是否启用
             val = "****" if val else ""
         else:
-            val = os.getenv(key, default)
+            # 优先从 main 模块运行时变量读取，其次从环境变量
+            val = getattr(m, key, None)
+            if val is None:
+                val = os.getenv(key, default)
         configs.append({
             "key": key,
             "value": val,
