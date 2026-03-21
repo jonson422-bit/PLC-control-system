@@ -586,6 +586,15 @@ async def alarm_monitor():
                                     })
 
                                     last_trigger_time[rule['id']] = datetime.now()
+
+                                    # 发送飞书通知
+                                    await notify_openclaw("plc_alarm", {
+                                        "rule_name": rule['name'],
+                                        "point": rule['point'],
+                                        "value": value,
+                                        "message": rule['message'],
+                                        "severity": rule['severity']
+                                    })
                                     logger.warning(f"告警触发: {rule['name']} - {rule['message']}")
                 await asyncio.sleep(ALARM_MONITOR_INTERVAL)
             except asyncio.CancelledError:
@@ -641,7 +650,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PLC Control API",
     description="PLC智能管控系统后端API",
-    version="1.2.0",
+    version="1.4.0",
     lifespan=lifespan
 )
 
@@ -699,13 +708,13 @@ async def root():
     dashboard = STATIC_DIR / "dashboard.html"
     if dashboard.exists():
         return FileResponse(dashboard)
-    return {"message": "PLC Control API", "version": "1.2.0"}
+    return {"message": "PLC Control API", "version": "1.4.0"}
 
 
 @app.get("/api")
 async def api_info():
     """API 信息"""
-    return {"message": "PLC Control API", "version": "1.2.0", "websocket": "/ws"}
+    return {"message": "PLC Control API", "version": "1.4.0", "websocket": "/ws"}
 
 
 @app.get("/health")

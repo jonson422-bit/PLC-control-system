@@ -377,8 +377,7 @@ class PLCClient:
             self._connected = True
             return value
         except Exception as e:
-            logger.error(f"读取 {point_name} 失败: {e}")
-            self._connected = False
+            logger.warning(f"读取 {point_name} 失败: {e}")
             return None
 
     def read_points(self, point_list: List[str]) -> ReadPointsResult:

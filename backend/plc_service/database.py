@@ -416,7 +416,7 @@ def create_alarm_log(rule_id: int, point: str, value: float, message: str, sever
     with get_db() as db:
         cursor = db.execute("""
             INSERT INTO alarm_logs (rule_id, point, value, message, severity, created_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """, (rule_id, point, value, message, severity))
         db.commit()
         return cursor.lastrowid

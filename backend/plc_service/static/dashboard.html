@@ -673,7 +673,7 @@
             </div>
         </div>
 
-        <p class="refresh-info">数据每秒自动刷新 | PLC: 192.168.2.1</p>
+        <p class="refresh-info" id="footerInfo">数据每秒自动刷新</p>
     </div>
     
     <!-- 设备编辑模态框 -->
@@ -1093,7 +1093,8 @@
         
         // ============ WebSocket 连接管理 ============
         function connectWebSocket() {
-            const wsUrl = `ws://${window.location.host}/ws`;
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
             console.log('🔌 连接 WebSocket:', wsUrl);
             
             ws = new WebSocket(wsUrl);
@@ -1249,6 +1250,12 @@
                 const response = await fetch(`${API_URL}/health`);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
+                // 更新页脚 PLC 状态
+                const footer = document.getElementById('footerInfo');
+                if (footer) {
+                    const plcStatus = data.plc_connected ? '已连接' : '未连接';
+                    footer.textContent = `数据每秒自动刷新 | PLC: ${plcStatus}`;
+                }
                 // 恢复监控状态并初始化按钮
                 updateMonitorButton();
                 // 如果之前已启用监控且WebSocket未连接，自动重连
@@ -1453,12 +1460,7 @@
                 });
             }
         }
-        
-        // 模拟量缩放工具函数
-        function scaleAnalogValue(raw, scaleLow, scaleHigh) {
-            // 优先使用后端计算的换算值，无则本地计算百分比
-            return 0;
-        }
+
 
         // 创建点位元素
         function createPointElement(p, type) {
