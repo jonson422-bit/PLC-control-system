@@ -229,6 +229,14 @@ python backend/plc_service/migrate_db.py
 
 ## 版本历史
 
+### v1.2.0 (2026-03-21)
+- **安全**: Bearer Token 认证、CORS 配置化
+- **稳定性**: 事件循环修复、DATA_SAVE_INTERVAL 配置生效、历史数据自动清理
+- **运维**: systemd 服务化（自动重启、开机自启）
+- **数据**: CSV 导出、工程量换算 (scale_low/scale_high)
+- **代码质量**: 共享 run_db() 消除重复、配置集中化 (.env)
+- **前端**: SVG 迷你趋势线、实时告警 Toast、移动端响应式
+
 ### v1.1.0 (2026-03-19)
 - 安全加固：移除所有写入功能，改为只读模式
 - 代码质量优化：修复22个问题
