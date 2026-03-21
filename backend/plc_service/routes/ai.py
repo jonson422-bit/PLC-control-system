@@ -7,15 +7,16 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 import httpx
 import json
+import os
 from .. import database as db
 from ..logger import get_logger
 
 router = APIRouter()
 logger = get_logger(__name__)
 
-OLLAMA_URL = "http://localhost:11434"
-DEFAULT_MODEL = "deepseek-r1:1.5b"  # 使用最快的模型
-AI_TIMEOUT = 120.0  # AI 响应超时时间（秒）
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:1.5b")
+AI_TIMEOUT = 120.0
 
 
 class DiagnoseRequest(BaseModel):
@@ -113,6 +114,20 @@ async def health_check():
         },
         "message": "系统正常运行" if ollama_ok else "AI 服务不可用，知识库搜索仍可用"
     }
+
+
+@router.get("/models")
+async def list_models():
+    """获取 Ollama 可用模型列表"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{OLLAMA_URL}/api/tags")
+            if response.status_code == 200:
+                models = [m["name"] for m in response.json().get("models", [])]
+                return {"available": True, "models": models, "default": DEFAULT_MODEL}
+            return {"available": False, "models": [], "default": DEFAULT_MODEL}
+    except Exception:
+        return {"available": False, "models": [], "default": DEFAULT_MODEL}
 
 
 @router.post("/diagnose")

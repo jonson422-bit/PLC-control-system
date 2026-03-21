@@ -417,6 +417,7 @@
             <button class="nav-tab" onclick="showTab('alarms', this)">告警管理<span class="alarm-badge" id="alarmBadge">0</span></button>
             <button class="nav-tab" onclick="showTab('devices', this)">设备管理</button>
             <button class="nav-tab" onclick="showTab('knowledge', this)">知识诊断</button>
+            <button class="nav-tab" onclick="showTab('diagnose', this)">AI 诊断</button>
         </div>
         
         <div id="monitorTab">
@@ -632,14 +633,30 @@
         </div>
         
         <div id="diagnoseTab" style="display:none;">
-            <div class="card">
-                <h2>AI 故障诊断</h2>
+            <div class="card" style="margin-bottom:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px;">
+                    <h2 style="margin:0;">AI 故障诊断</h2>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <span id="ollamaStatus" style="font-size:12px;color:#888;"></span>
+                        <select id="aiModelSelect" style="padding:8px 12px;background:#0f3460;border:none;border-radius:5px;color:#eee;min-width:160px;">
+                            <option value="">加载模型列表...</option>
+                        </select>
+                    </div>
+                </div>
                 <textarea id="symptomInput" placeholder="描述故障现象，如：电机转速异常、温度过高等..." 
-                    style="width:100%;height:100px;background:#0f3460;border:none;border-radius:8px;padding:15px;color:#eee;margin-bottom:15px;"></textarea>
+                    style="width:100%;height:100px;background:#0f3460;border:none;border-radius:8px;padding:15px;color:#eee;margin-bottom:15px;box-sizing:border-box;"></textarea>
                 <button onclick="diagnose()" style="padding:12px 24px;background:#00d9ff;border:none;border-radius:8px;color:#1a1a2e;cursor:pointer;">
                     开始诊断
                 </button>
-                <div id="diagnoseResult" style="margin-top:20px;padding:20px;background:#0f3460;border-radius:8px;display:none;"></div>
+                <div id="diagnoseResult" style="margin-top:20px;padding:20px;background:#0f3460;border-radius:8px;display:none;white-space:pre-wrap;font-size:14px;line-height:1.6;"></div>
+            </div>
+            <div class="card">
+                <h2>智能对话</h2>
+                <div id="chatHistory" style="max-height:400px;overflow-y:auto;margin-bottom:15px;"></div>
+                <div style="display:flex;gap:10px;">
+                    <input id="chatInput" type="text" placeholder="输入问题..." style="flex:1;padding:10px 12px;background:#0f3460;border:none;border-radius:8px;color:#eee;box-sizing:border-box;" onkeydown="if(event.key==='Enter')sendChat()">
+                    <button onclick="sendChat()" style="padding:10px 20px;background:#00d9ff;border:none;border-radius:8px;color:#1a1a2e;cursor:pointer;">发送</button>
+                </div>
             </div>
         </div>
         
@@ -1805,29 +1822,95 @@
         async function diagnose() {
             const symptom = document.getElementById('symptomInput').value;
             if (!symptom) {
-                alert('请输入故障现象');
+                showToast('请输入故障现象', 'warning');
                 return;
             }
-            
+            const model = document.getElementById('aiModelSelect').value;
             const resultEl = document.getElementById('diagnoseResult');
             resultEl.style.display = 'block';
-            resultEl.innerHTML = '正在分析...';
-            
+            resultEl.textContent = '正在分析...';
+
             try {
+                const payload = { symptom };
+                if (model) payload.model = model;
                 const data = await apiFetch(`${API_URL}/api/ai/diagnose`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symptom })
+                    body: JSON.stringify(payload)
                 });
-                // 使用 textContent 防止 XSS（AI 返回内容不可信）
-                const pre = document.createElement('pre');
-                pre.style.whiteSpace = 'pre-wrap';
-                pre.textContent = data.analysis || '无分析结果';
-                resultEl.innerHTML = '';
-                resultEl.appendChild(pre);
+                if (data.error && !data.analysis) {
+                    resultEl.textContent = 'AI 不可用: ' + data.error;
+                    if (data.knowledge_context) {
+                        resultEl.textContent += '\n\n--- 知识库参考 ---\n' + data.knowledge_context;
+                    }
+                    return;
+                }
+                resultEl.textContent = data.analysis || '无分析结果';
             } catch (error) {
-                resultEl.innerHTML = '诊断失败: ' + error;
+                resultEl.textContent = '诊断失败: ' + error;
             }
+        }
+
+        // AI 模型列表加载
+        async function loadAiModels() {
+            const statusEl = document.getElementById('ollamaStatus');
+            const selectEl = document.getElementById('aiModelSelect');
+            try {
+                const data = await apiFetch(`${API_URL}/api/ai/models`);
+                statusEl.textContent = data.available ? 'Ollama: 已连接' : 'Ollama: 未连接';
+                statusEl.style.color = data.available ? '#00ff88' : '#ff4757';
+                selectEl.innerHTML = '';
+                if (data.models.length > 0) {
+                    data.models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m;
+                        opt.textContent = m;
+                        if (m === data.default) opt.selected = true;
+                        selectEl.appendChild(opt);
+                    });
+                } else {
+                    selectEl.innerHTML = '<option value="">无可用模型</option>';
+                }
+            } catch (e) {
+                statusEl.textContent = 'Ollama: 检查失败';
+                statusEl.style.color = '#ff4757';
+            }
+        }
+
+        // 智能对话
+        async function sendChat() {
+            const input = document.getElementById('chatInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            input.value = '';
+            const history = document.getElementById('chatHistory');
+
+            // 用户消息
+            const userDiv = document.createElement('div');
+            userDiv.style.cssText = 'margin-bottom:12px;text-align:right;';
+            userDiv.innerHTML = `<span style="display:inline-block;background:#0f3460;padding:8px 14px;border-radius:8px;max-width:80%;color:#eee;font-size:14px;">${msg.replace(/</g,'&lt;')}</span>`;
+            history.appendChild(userDiv);
+
+            // AI 回复占位
+            const aiDiv = document.createElement('div');
+            aiDiv.style.cssText = 'margin-bottom:12px;';
+            aiDiv.innerHTML = `<span style="display:inline-block;background:#1a2a4a;padding:8px 14px;border-radius:8px;max-width:80%;color:#ccc;font-size:14px;">思考中...</span>`;
+            history.appendChild(aiDiv);
+            history.scrollTop = history.scrollHeight;
+
+            try {
+                const model = document.getElementById('aiModelSelect').value;
+                const payload = { message: msg };
+                if (model) payload.model = model;
+                const data = await apiFetch(`${API_URL}/api/ai/chat`, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                const response = data.response || ('AI 不可用: ' + (data.error || '未知错误'));
+                aiDiv.querySelector('span').textContent = response;
+            } catch (e) {
+                aiDiv.querySelector('span').textContent = '请求失败: ' + e;
+            }
+            history.scrollTop = history.scrollHeight;
         }
         
         // ============ 变量管理功能（合并程序管理和点位配置）============
@@ -2253,7 +2336,7 @@
         let tabLoadTimers = {};
         function showTab(tab, btn) {
             // 隐藏所有标签
-            const tabs = ['monitorTab', 'historyTab', 'variablesTab', 'alarmsTab', 'devicesTab', 'knowledgeTab'];
+            const tabs = ['monitorTab', 'historyTab', 'variablesTab', 'alarmsTab', 'devicesTab', 'knowledgeTab', 'diagnoseTab'];
             tabs.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
             document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
 
@@ -2275,6 +2358,7 @@
                 if (tab === 'devices') loadDevices();
                 if (tab === 'knowledge') loadKnowledge();
                 if (tab === 'history') loadHistoryPointOptions();
+                if (tab === 'diagnose') loadAiModels();
             }, 200);
         }
         
