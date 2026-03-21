@@ -418,6 +418,7 @@
             <button class="nav-tab" onclick="showTab('devices', this)">设备管理</button>
             <button class="nav-tab" onclick="showTab('knowledge', this)">知识诊断</button>
             <button class="nav-tab" onclick="showTab('diagnose', this)">AI 诊断</button>
+            <button class="nav-tab" onclick="showTab('settings', this)">系统设置</button>
         </div>
         
         <div id="monitorTab">
@@ -659,7 +660,19 @@
                 </div>
             </div>
         </div>
-        
+
+        <div id="settingsTab" style="display:none;">
+            <div class="card" style="margin-bottom:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px;">
+                    <h2 style="margin:0;">系统设置</h2>
+                    <div style="display:flex;gap:10px;">
+                        <button onclick="reconnectPLC()" style="padding:8px 16px;background:#0f3460;border:1px solid #2d2d44;border-radius:5px;color:#eee;cursor:pointer;">PLC 重连</button>
+                    </div>
+                </div>
+                <div id="settingsContent" style="color:#888;">加载中...</div>
+            </div>
+        </div>
+
         <p class="refresh-info">数据每秒自动刷新 | PLC: 192.168.2.1</p>
     </div>
     
@@ -1913,6 +1926,94 @@
             history.scrollTop = history.scrollHeight;
         }
         
+        // ============ 系统设置功能 ============
+        let systemConfigs = [];
+
+        const GROUP_LABELS = {
+            plc: 'PLC 连接',
+            task: '后台任务',
+            ai: 'AI 诊断'
+        };
+
+        async function loadSettings() {
+            const container = document.getElementById('settingsContent');
+            try {
+                const data = await apiFetch(`${API_URL}/api/system/config`);
+                systemConfigs = data.configs || [];
+                renderSettings(container, systemConfigs);
+            } catch (e) {
+                container.innerHTML = '<p style="color:#ff4757;">加载配置失败: ' + e + '</p>';
+            }
+        }
+
+        function renderSettings(container, configs) {
+            const groups = {};
+            configs.forEach(c => {
+                if (!groups[c.group]) groups[c.group] = [];
+                groups[c.group].push(c);
+            });
+
+            let html = '';
+            for (const [group, items] of Object.entries(groups)) {
+                html += `<div style="margin-bottom:24px;"><h3 style="margin:0 0 12px;font-size:16px;color:#00d9ff;border-bottom:1px solid #2d2d44;padding-bottom:8px;">${GROUP_LABELS[group] || group}</h3>`;
+                items.forEach(c => {
+                    const isReadOnly = c.key === 'AUTH_TOKEN';
+                    const inputType = c.type === 'int' ? 'number' : 'text';
+                    const displayVal = isReadOnly ? (c.value || '(未启用)') : c.value;
+                    const roAttr = isReadOnly ? 'readonly style="opacity:0.6;cursor:not-allowed;"' : '';
+                    const btnHtml = isReadOnly ? '' : `<button onclick="saveSetting('${c.key}', this)" style="padding:6px 14px;background:#00d9ff;border:none;border-radius:5px;color:#1a1a2e;cursor:pointer;font-size:13px;">保存</button>`;
+                    html += `
+                        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1a1a2e;flex-wrap:wrap;">
+                            <label style="min-width:180px;font-size:14px;color:#ccc;">${c.label}</label>
+                            <input type="${inputType}" id="cfg_${c.key}" value="${displayVal}" ${roAttr}
+                                style="flex:1;min-width:120px;max-width:300px;padding:8px 12px;background:#0f3460;border:1px solid #2d2d44;border-radius:5px;color:#eee;font-size:14px;box-sizing:border-box;">
+                            <span style="font-size:11px;color:#555;min-width:80px;">${c.default}</span>
+                            ${btnHtml}
+                        </div>`;
+                });
+                html += `</div>`;
+            }
+            container.innerHTML = html;
+        }
+
+        async function saveSetting(key, btnEl) {
+            const input = document.getElementById(`cfg_${key}`);
+            const value = input.value.trim();
+            if (!value) { showToast('值不能为空', 'warning'); return; }
+            btnEl.disabled = true;
+            btnEl.textContent = '保存中...';
+            try {
+                const data = await apiFetch(`${API_URL}/api/system/config`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ key, value })
+                });
+                if (data.success) {
+                    showToast(`${data.label} 已更新`, 'success');
+                    // PLC 参数变更提示
+                    if (key.startsWith('PLC_')) {
+                        showToast('PLC 参数已变更，正在尝试重连...', 'warning');
+                    }
+                } else {
+                    showToast('保存失败: ' + JSON.stringify(data), 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e, 'error');
+            } finally {
+                btnEl.disabled = false;
+                btnEl.textContent = '保存';
+            }
+        }
+
+        async function reconnectPLC() {
+            if (!confirm('确定要重新连接 PLC 吗？')) return;
+            try {
+                const data = await apiFetch(`${API_URL}/api/system/plc/reconnect`, { method: 'POST' });
+                showToast(data.message, 'success');
+            } catch (e) {
+                showToast('重连失败: ' + e, 'error');
+            }
+        }
+
         // ============ 变量管理功能（合并程序管理和点位配置）============
         let currentProgramId = null;
         let allVariables = [];
@@ -2336,7 +2437,7 @@
         let tabLoadTimers = {};
         function showTab(tab, btn) {
             // 隐藏所有标签
-            const tabs = ['monitorTab', 'historyTab', 'variablesTab', 'alarmsTab', 'devicesTab', 'knowledgeTab', 'diagnoseTab'];
+            const tabs = ['monitorTab', 'historyTab', 'variablesTab', 'alarmsTab', 'devicesTab', 'knowledgeTab', 'diagnoseTab', 'settingsTab'];
             tabs.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
             document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
 
@@ -2359,6 +2460,7 @@
                 if (tab === 'knowledge') loadKnowledge();
                 if (tab === 'history') loadHistoryPointOptions();
                 if (tab === 'diagnose') loadAiModels();
+                if (tab === 'settings') loadSettings();
             }, 200);
         }
         

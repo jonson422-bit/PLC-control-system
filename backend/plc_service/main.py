@@ -30,7 +30,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 from .database import init_db, get_db, save_batch_monitor_data, cleanup_old_monitor_data, create_alarm_event, get_monitored_addresses, get_monitored_points_config, get_enabled_alarm_rules, create_alarm_log
 from .plc_client import PLCClient
-from .routes import plc, alarms, ai, points, devices, history, knowledge
+from .routes import plc, alarms, ai, points, devices, history, knowledge, system
 from .routes import program_routes
 from .logger import get_logger
 
@@ -690,6 +690,7 @@ app.include_router(devices.router, prefix="/api/devices", tags=["Devices"], depe
 app.include_router(history.router, prefix="/api/data", tags=["History"], dependencies=[_auth])
 app.include_router(knowledge.router, prefix="/api/knowledge", tags=["Knowledge"], dependencies=[_auth])
 app.include_router(program_routes.router, prefix="/api/programs", tags=["Program"], dependencies=[_auth])
+app.include_router(system.router, prefix="/api/system", tags=["System"], dependencies=[_auth])
 
 
 @app.get("/")
